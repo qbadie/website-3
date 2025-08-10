@@ -1,10 +1,38 @@
-// API Reference: https://www.wix.com/velo/reference/api-overview/introduction
-// “Hello, World!” Example: https://learn-code.wix.com/en/article/hello-world
+// This function recursively finds all element IDs on the page.
+function findAllChildren(element, idSet) {
+    if (element && element.id) {
+        idSet.add(`#${element.id}`);
+    }
+    if (element.children && element.children.length > 0) {
+        element.children.forEach(child => {
+            findAllChildren(child, idSet);
+        });
+    }
+}
 
 $w.onReady(function () {
-    // Write your JavaScript here
+    // Select the button and text box directly. This is the correct syntax
+    // for selecting global elements (in the header) from masterPage.js.
+    // @ts-ignore
+    const exportButton = $w("#exportButton");
+    // @ts-ignore
+    const outputBox = $w("#outputBox");
 
-    // To select an element by ID use: $w('#elementID')
+    // Set up the click event for the button.
+    exportButton.onClick((event) => {
+        const allElementIds = new Set();
 
-    // Click 'Preview' to run your code
+        // Now, INSIDE the click handler, we can use event.context
+        // to get a reference to the current PAGE being viewed.
+        const page = $w.at(event.context);
+        
+        // Start the search from the page element.
+        findAllChildren(page, allElementIds);
+        
+        const header = "ELEMENT IDs ON THIS PAGE:\n=========================";
+        const outputText = [...allElementIds].sort().join("\n");
+
+        // Update the output box's value with the results.
+        outputBox.value = header + "\n" + outputText;
+    });
 });
