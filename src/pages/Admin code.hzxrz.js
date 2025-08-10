@@ -1,38 +1,52 @@
 import wixData from 'wix-data';
 
-// This function will find all element IDs by starting from a parent element
-// and recursively searching through all its children.
-function findAllChildren(element, idSet) {
-    // Add the current element's ID to our set.
+// This function recursively finds all element IDs on the page.
+function findAllElementIds(element, idSet) {
     if (element && element.id) {
         idSet.add(`#${element.id}`);
     }
-
-    // If the element has children, run this function for each child.
     if (element.children && element.children.length > 0) {
         element.children.forEach(child => {
-            // This is the recursive part.
-            findAllChildren(child, idSet);
+            findAllElementIds(child, idSet);
         });
     }
 }
 
 $w.onReady(function () {
-    $w("#exportButton").onClick((event) => {
-        // Create a new Set to hold the IDs and prevent duplicates.
+    $w("#exportButton").onClick(async (event) => {
+        // --- 1. GET PAGE ELEMENT IDs ---
         const allElementIds = new Set();
-
-        // Get the page element itself using the event's context.
         const page = $w.at(event.context);
+        findAllElementIds(page, allElementIds);
         
-        // Start the recursive search from the main page element.
-        findAllChildren(page, allElementIds);
-        
-        // Format the text for a clean output.
-        const header = "ELEMENT IDs ON THIS PAGE:\n=========================";
-        const outputText = [...allElementIds].sort().join("\n");
+        const elementsHeader = "PAGE ELEMENT IDs:\n===================";
+        const elementsText = [...allElementIds].sort().join("\n");
 
-        // Display the final, sorted list in your text box.
-        $w("#outputBox").value = header + "\n" + outputText;
+        // --- 2. GET COLLECTION & FIELD IDs ---
+        const collectionsText = await getCollectionSchemas();
+
+        // --- 3. DISPLAY EVERYTHING ---
+        $w("#outputBox").value = `${elementsHeader}\n${elementsText}\n\n${collectionsText}`;
     });
 });
+
+// This function calls the backend to get the schemas.
+async function getCollectionSchemas() {
+    try {
+        // FIX: The function is named getCollections, not listCollections.
+        const schemas = await wixData.getCollections({ includeHidden: false });
+        let output = "COLLECTION & FIELD IDs:\n=======================";
+
+        for (const collection of schemas) {
+            output += `\n\nCollection ID: "${collection.id}"`;
+            if (collection.fields) {
+                collection.fields.forEach(field => {
+                    output += `\n  - ${field.key} (${field.type})`;
+                });
+            }
+        }
+        return output;
+    } catch (error) {
+        return `Error fetching collections: ${error.message}`;
+    }
+}
