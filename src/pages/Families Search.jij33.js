@@ -57,8 +57,8 @@ function setupInstantSearch() {
  */
 async function applyFilters() {
     const searchableFields = [
-        'operationType', 'requestDonationDetails', 'sizeDetails',
-        'forWho', 'donationMethod', 'requestNotes', 'staffNotes'
+        'headOfFamily', 'familyMembers', 'familyDescription',
+        'directions', 'needs', 'staffNotes', 'primaryMailingAddress'
     ];
 
     let finalFilter = wixData.filter(); // Start with an empty filter (shows all items)
