@@ -1,26 +1,38 @@
 import wixData from 'wix-data';
 
+// This function will find all element IDs by starting from a parent element
+// and recursively searching through all its children.
+function findAllChildren(element, idSet) {
+    // Add the current element's ID to our set.
+    if (element && element.id) {
+        idSet.add(`#${element.id}`);
+    }
+
+    // If the element has children, run this function for each child.
+    if (element.children && element.children.length > 0) {
+        element.children.forEach(child => {
+            // This is the recursive part.
+            findAllChildren(child, idSet);
+        });
+    }
+}
+
 $w.onReady(function () {
-    // This code runs when the page is ready.
-    // We will set up the button's click event here.
+    $w("#exportButton").onClick((event) => {
+        // Create a new Set to hold the IDs and prevent duplicates.
+        const allElementIds = new Set();
 
-    $w("#exportButton").onClick(async () => {
-        // Show a "loading" message in the text box
-        $w("#outputBox").value = "Generating IDs, please wait...";
+        // Get the page element itself using the event's context.
+        const page = $w.at(event.context);
+        
+        // Start the recursive search from the main page element.
+        findAllChildren(page, allElementIds);
+        
+        // Format the text for a clean output.
+        const header = "ELEMENT IDs ON THIS PAGE:\n=========================";
+        const outputText = [...allElementIds].sort().join("\n");
 
-        // --- GET ALL COLLECTION IDs ---
-        const collections = await wixData.getCollections();
-        const collectionIDs = collections.map(c => c.id);
-        const collectionText = "DATABASE COLLECTIONS:\n" + "=====================\n" + collectionIDs.join("\n");
-
-        // --- GET ALL PAGE ELEMENT IDs ---
-        // The $w("*") selector gets every element on the page
-        const allElements = $w("*");
-        const elementIDs = allElements.map(element => "#" + element.id);
-        const elementText = "PAGE ELEMENT IDs:\n" + "=================\n" + elementIDs.join("\n");
-
-        // --- DISPLAY THE RESULTS ---
-        // Combine everything and put it in the output text box
-        $w("#outputBox").value = collectionText + "\n\n" + elementText;
+        // Display the final, sorted list in your text box.
+        $w("#outputBox").value = header + "\n" + outputText;
     });
 });
