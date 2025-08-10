@@ -23,7 +23,7 @@ $w.onReady(function () {
  * Remember to use the console.log() method from our last step to find your correct Field Key.
  */
 function setupRowSelect() {
-    $w('#operationsTable').onRowSelect((event) => {
+    $w('#familiesTable').onRowSelect((event) => {
         // DEBUGGING LOG: Leave this here to easily check the data for any row.
         console.log("Clicked Row Data:", event.rowData);
         
