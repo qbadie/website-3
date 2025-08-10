@@ -11,20 +11,17 @@ function findAllChildren(element, idSet) {
 }
 
 $w.onReady(function () {
-    // Select the button and text box directly. This is the correct syntax
-    // for selecting global elements (in the header) from masterPage.js.
     // @ts-ignore
     const exportButton = $w("#exportButton");
     // @ts-ignore
     const outputBox = $w("#outputBox");
 
-    // Set up the click event for the button.
     exportButton.onClick((event) => {
         const allElementIds = new Set();
 
-        // Now, INSIDE the click handler, we can use event.context
-        // to get a reference to the current PAGE being viewed.
-        const page = $w.at(event.context);
+        // FIX: Instead of using the event context, we directly
+        // select the main 'Page' element itself.
+        const page = $w("Page");
         
         // Start the search from the page element.
         findAllChildren(page, allElementIds);
