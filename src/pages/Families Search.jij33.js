@@ -28,7 +28,7 @@ function setupRowSelect() {
         console.log("Clicked Row Data:", event.rowData);
         
         // IMPORTANT: Replace this with the actual Field Key you found in your console.
-        const itemPageLink = event.rowData['link-operations-operationId']; 
+        const itemPageLink = event.rowData['link-families-familyId']; 
         
         if (itemPageLink) {
             wixLocationFrontend.to(itemPageLink);
