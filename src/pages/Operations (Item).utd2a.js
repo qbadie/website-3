@@ -2,12 +2,12 @@ import wixData from 'wix-data';
 
 // ====================================================================
 // --- Configuration ---
-// ACTION REQUIRED: Verify these collection and field names match your site's database (CMS)
+// Updated with the exact Collection and Field IDs from your project.
 const COLLECTIONS = {
-    OPERATIONS: "Operations",
-    FAMILIES: "Families",
-    DONORS: "Donors",
-    INDIVIDUALS: "Individuals"
+    OPERATIONS: "Import3",
+    FAMILIES: "Import4",
+    DONORS: "Import5",
+    INDIVIDUALS: "Import6"
 };
 
 const FIELDS = {
@@ -16,56 +16,55 @@ const FIELDS = {
     OP_DONOR_REF: "linkedDonor",
     OP_INDIVIDUAL_REF: "linkedIndividual",
 
-    // Reference field in the 'Individuals' collection linking to a Family
+    // Reference field in the 'Individuals' collection linking to its parent Family
     INDIVIDUAL_FAMILY_REF: "family"
 };
 // ====================================================================
 
 
 $w.onReady(function () {
-    // Main dataset for the current Operation item
+    // This is the main dataset for the current "Operation" item on the page.
     $w('#dynamicDataset').onReady(() => {
         const currentOperation = $w('#dynamicDataset').getCurrentItem();
 
-        // CRITICAL FIX: Check if the main item loaded correctly.
-        // This stops all other code from running if the page URL is invalid.
+        // This check is critical. If the page URL is invalid and no item loads,
+        // it stops the code to prevent further errors.
         if (!currentOperation) {
-            console.error("PAGE LOAD FAILED: The dynamic dataset could not load an item. Please check that the URL is correct and that the item exists.");
-            // Optional: Display a user-friendly error message on the page.
-            // $w('#errorMessage').text = "Sorry, we couldn't load the details for this request.";
-            // $w('#errorMessage').expand();
-            return; // Stop execution
+            console.error("PAGE LOAD FAILED: The dynamic dataset could not load an item. Please check the URL.");
+            // You can add a user-facing error message here if you have a text element for it.
+            return; 
         }
         
-        // If the item loaded, proceed with setting up the page.
+        // If the item loaded successfully, set up all page functionality.
         setupEventHandlers(currentOperation);
         initialUiSetup();
     });
 });
 
 /**
- * Sets the initial state of the page, collapsing search sections.
- * This now selects elements individually to prevent VSCode errors.
+ * Sets the initial visibility of page elements when the page loads.
  */
 function initialUiSetup() {
-    // Collapse search UIs individually
+    // Collapse search sections until they are needed.
+    // Note: Using #input3 for family search and #searchInput for donor search based on the element list.
     $w('#familySearchTable').collapse();
-    $w('#familySearchInput').collapse();
+    $w('#input3').collapse();
     $w('#donorSearchTable').collapse();
-    $w('#donorSearchInput').collapse();
+    $w('#searchInput').collapse();
 
-    // Check if a family is linked to this operation
+    // Check if a family is linked to this operation.
     const linkedFamiliesCount = $w('#dataset1').getTotalCount();
 
-    // Hide or show the entire individuals section based on whether a family is linked.
+    // The "Individuals" section is only visible if a family is linked.
     if (linkedFamiliesCount > 0) {
         $w('#familyMembersDisplayTable').expand();
         $w('#linkedMemberRepeater').expand();
-        $w('#newMemberBox').expand();
+        // Assuming #box148 is the container for the "Add New Member" inputs.
+        $w('#box148').expand();
     } else {
         $w('#familyMembersDisplayTable').collapse();
         $w('#linkedMemberRepeater').collapse();
-        $w('#newMemberBox').collapse();
+        $w('#box148').collapse();
     }
 }
 
@@ -90,23 +89,23 @@ function setupEventHandlers(currentOperation) {
     // --- "Add Existing" Button Handlers ---
     $w('#addExistingFamily').onClick(() => {
         $w('#familySearchTable').expand();
-        $w('#familySearchInput').expand();
+        $w('#input3').expand();
     });
     $w('#addExistingDonor').onClick(() => {
         $w('#donorSearchTable').expand();
-        $w('#donorSearchInput').expand();
+        $w('#searchInput').expand();
     });
 
     // --- Search Input Handlers ---
-    $w('#familySearchInput').onInput(() => filterSearchTable('Family'));
-    $w('#donorSearchInput').onInput(() => filterSearchTable('Donor'));
+    $w('#input3').onInput(() => filterSearchTable('Family'));
+    $w('#searchInput').onInput(() => filterSearchTable('Donor'));
 
     // --- Search Table Row Select Handlers ---
     $w('#familySearchTable').onRowSelect((event) => handleLink(operationId, event.rowData, 'Family'));
     $w('#donorSearchTable').onRowSelect((event) => handleLink(operationId, event.rowData, 'Donor'));
 
     // --- Individual/Family Member Handlers ---
-    $w('#addNewMemberButton').onClick(() => handleAddNewMember());
+    $w('#AddNewMemberButton').onClick(() => handleAddNewMember());
     $w('#familyMembersDisplayTable').onRowSelect((event) => handleLink(operationId, event.rowData, 'Individual'));
 }
 
@@ -119,32 +118,30 @@ function setupEventHandlers(currentOperation) {
  */
 async function handleLink(operationId, selectedItem, type) {
     try {
-        let collectionName, refField, linkedDataset;
+        let refField, linkedDataset;
 
         if (type === 'Family') {
-            collectionName = COLLECTIONS.OPERATIONS;
             refField = FIELDS.OP_FAMILY_REF;
-            linkedDataset = $w('#dataset1'); // Use direct element reference
+            linkedDataset = $w('#dataset1'); 
             $w('#familySearchTable').collapse();
-            $w('#familySearchInput').collapse();
+            $w('#input3').collapse();
         } else if (type === 'Donor') {
-            collectionName = COLLECTIONS.OPERATIONS;
             refField = FIELDS.OP_DONOR_REF;
-            linkedDataset = $w('#dataset5'); // Use direct element reference
+            linkedDataset = $w('#dataset5');
             $w('#donorSearchTable').collapse();
-            $w('#donorSearchInput').collapse();
+            $w('#searchInput').collapse();
         } else if (type === 'Individual') {
-            collectionName = COLLECTIONS.OPERATIONS;
             refField = FIELDS.OP_INDIVIDUAL_REF;
-            linkedDataset = $w('#dataset3'); // Use direct element reference
+            linkedDataset = $w('#dataset3');
         }
 
-        await wixData.insertReference(collectionName, refField, operationId, selectedItem._id);
+        await wixData.insertReference(COLLECTIONS.OPERATIONS, refField, operationId, selectedItem._id);
         await linkedDataset.refresh();
         console.log(`Successfully linked ${type} ${selectedItem._id} to Operation ${operationId}`);
 
+        // If a family was just linked, refresh the UI to show the individuals section.
         if (type === 'Family') {
-            await initialUiSetup(); // Refresh UI to show/hide individuals section
+            await initialUiSetup();
         }
 
     } catch (err) {
@@ -160,28 +157,26 @@ async function handleLink(operationId, selectedItem, type) {
  */
 async function handleRemoveLink(operationId, itemIdToRemove, type) {
     try {
-        let collectionName, refField, linkedDataset;
+        let refField, linkedDataset;
 
         if (type === 'Family') {
-            collectionName = COLLECTIONS.OPERATIONS;
             refField = FIELDS.OP_FAMILY_REF;
-            linkedDataset = $w('#dataset1'); // Use direct element reference
+            linkedDataset = $w('#dataset1');
         } else if (type === 'Donor') {
-            collectionName = COLLECTIONS.OPERATIONS;
             refField = FIELDS.OP_DONOR_REF;
-            linkedDataset = $w('#dataset5'); // Use direct element reference
+            linkedDataset = $w('#dataset5');
         } else if (type === 'Individual') {
-            collectionName = COLLECTIONS.OPERATIONS;
             refField = FIELDS.OP_INDIVIDUAL_REF;
-            linkedDataset = $w('#dataset3'); // Use direct element reference
+            linkedDataset = $w('#dataset3');
         }
-
-        await wixData.removeReference(collectionName, refField, operationId, itemIdToRemove);
+        
+        await wixData.removeReference(COLLECTIONS.OPERATIONS, refField, operationId, itemIdToRemove);
         await linkedDataset.refresh();
         console.log(`Successfully unlinked ${type} ${itemIdToRemove} from Operation ${operationId}`);
         
+        // If a family was unlinked, refresh the UI to hide the individuals section if it was the last one.
         if (type === 'Family') {
-            await initialUiSetup(); // Refresh UI to show/hide individuals section
+            await initialUiSetup();
         }
 
     } catch (err) {
@@ -190,18 +185,19 @@ async function handleRemoveLink(operationId, itemIdToRemove, type) {
 }
 
 /**
- * Filters the search tables for Families or Donors.
+ * Filters the search tables for Families or Donors based on input.
+ * @param {string} type - The type of table to filter: 'Family' or 'Donor'.
  */
 async function filterSearchTable(type) {
     let searchDataset, searchInput, searchableFields;
 
     if (type === 'Family') {
         searchDataset = $w('#dataset2');
-        searchInput = $w('#familySearchInput');
+        searchInput = $w('#input3');
         searchableFields = ['headOfFamily', 'familyMembers', 'familyDescription'];
     } else { // 'Donor'
         searchDataset = $w('#dataset6');
-        searchInput = $w('#donorSearchInput');
+        searchInput = $w('#searchInput');
         searchableFields = ['donorName', 'organizationName', 'donorEmail'];
     }
 
@@ -217,7 +213,7 @@ async function filterSearchTable(type) {
 }
 
 /**
- * Creates a new individual item and links it to the currently displayed family.
+ * Creates a new individual item and links it to the family currently associated with the operation.
  */
 async function handleAddNewMember() {
     const linkedFamily = await $w('#dataset1').getCurrentItem();
@@ -230,15 +226,16 @@ async function handleAddNewMember() {
         age: $w('#newMemberAgeInput').value,
         boyOrGirl: $w('#newMemberBoyOrGirlInput').value,
         sizeOrInfo: $w('#newMemberSizeOrInfoInput').value,
-        [FIELDS.INDIVIDUAL_FAMILY_REF]: linkedFamily._id
+        [FIELDS.INDIVIDUAL_FAMILY_REF]: linkedFamily._id // This links the new individual to the family
     };
 
     try {
         await wixData.insert(COLLECTIONS.INDIVIDUALS, newMember);
+        // Refresh the table of all family members to show the new addition.
         await $w('#dataset4').refresh();
         console.log("Successfully added new family member.");
         
-        // Clear input fields individually
+        // Clear input fields for the next entry.
         $w('#newMemberAgeInput').value = "";
         $w('#newMemberBoyOrGirlInput').value = "";
         $w('#newMemberSizeOrInfoInput').value = "";
