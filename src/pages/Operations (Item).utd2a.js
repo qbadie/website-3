@@ -13,8 +13,7 @@ const FIELDS = {
     OP_FAMILY_REF: "linkedFamily",
     OP_DONOR_REF: "linkedDonor",
     OP_INDIVIDUAL_REF: "linkedIndividual",
-    // --- CORRECTED: This is the multi-ref field on the Family item ---
-    FAMILY_MEMBERS_REF: "Import4_linkedFamilyMembers"
+    FAMILY_MEMBERS_REF: "Import4_linkedFamilyMembers" // Multi-Reference field on the Family item
 };
 // ====================================================================
 
@@ -29,25 +28,25 @@ $w.onReady(function () {
         await initialUiSetup();
     });
 
-    // This event runs BEFORE a new member is saved via dataset #7.
-    // It's used to create the custom 'individualId'.
+    // This event runs BEFORE a new member is saved.
     $w('#dataset7').onBeforeSave((itemToSave) => {
+        // --- ADDED: Safety check to prevent the 'undefined' error. ---
+        if (!itemToSave) {
+            console.error("onBeforeSave triggered with an undefined item.");
+            return Promise.reject("Cannot save an undefined item.");
+        }
         const uniqueId = `IND-${Date.now()}`;
         itemToSave.individualId = uniqueId;
-        console.log(`Generating custom ID for new member: ${uniqueId}`);
         return itemToSave;
     });
 
-    // This event runs AFTER a new member is saved via dataset #7.
+    // This event runs AFTER a new member is saved.
     $w('#dataset7').onAfterSave(async (savedIndividual) => {
-        console.log("New member saved. Now linking to family.");
         const linkedFamily = await $w('#dataset1').getCurrentItem();
-        if (linkedFamily) {
-            // --- NEW: Add a reference to the new individual back to the Family item. ---
+        if (linkedFamily && savedIndividual) {
+            // This will now work correctly after you fix the field type in the CMS.
             await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, linkedFamily._id, savedIndividual._id);
         }
-        
-        // Refresh the page state and reset the form.
         await initialUiSetup();
         $w('#dataset7').new();
     });
@@ -67,12 +66,8 @@ function setupEventHandlers(currentOperation) {
     $w('#linkedMemberRepeater').onItemReady(($item, itemData) => {
         $item('#removeLinkedMemberButton').onClick(() => handleRemoveLink(operationId, itemData._id, 'Individual'));
     });
-    $w('#addExistingFamily').onClick(() => {
-        $w('#familySearchTable, #input3').expand();
-    });
-    $w('#addExistingDonor').onClick(() => {
-        $w('#donorSearchTable, #searchInput').expand();
-    });
+    $w('#addExistingFamily').onClick(() => $w('#familySearchTable, #input3').expand());
+    $w('#addExistingDonor').onClick(() => $w('#donorSearchTable, #searchInput').expand());
     $w('#addNewFamily').onClick(() => handleAddNew('Family'));
     $w('#addNewDonor').onClick(() => handleAddNew('Donor'));
     $w('#input3').onInput(() => filterSearchTable('Family'));
@@ -83,25 +78,23 @@ function setupEventHandlers(currentOperation) {
 }
 
 /**
- * --- UPDATED: Sets visibility and filters the individuals table with code. ---
+ * Sets visibility and filters the individuals table with code.
  */
 async function initialUiSetup() {
     $w('#familySearchTable, #input3, #donorSearchTable, #searchInput').collapse();
     const linkedFamily = await $w('#dataset1').getCurrentItem();
 
     if (linkedFamily) {
-        // --- NEW: Filter logic for the family members table ---
-        const memberIds = linkedFamily[FIELDS.FAMILY_MEMBERS_REF].map(ref => ref._id);
+        // This will now work correctly after you fix the field type in the CMS.
+        const memberRefs = linkedFamily[FIELDS.FAMILY_MEMBERS_REF] || [];
+        const memberIds = memberRefs.map(ref => ref._id);
         
-        if (memberIds && memberIds.length > 0) {
-            // If the family has linked members, create a filter to find them.
+        if (memberIds.length > 0) {
             const filter = wixData.filter().hasSome("_id", memberIds);
             await $w('#dataset4').setFilter(filter);
         } else {
-            // If the family has no members linked, clear the filter and show nothing.
-            await $w('#dataset4').setFilter(wixData.filter().eq("_id", "")); // No item will match this
+            await $w('#dataset4').setFilter(wixData.filter().eq("_id", "no_item_will_match_this"));
         }
-
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').expand();
     } else {
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').collapse();
