@@ -46,19 +46,25 @@ $w.onReady(function () {
  * and managing the visibility of the individuals section.
  */
 async function initialUiSetup() {
-    // Collapse all search UIs on page load
-    $w('#familySearchTable, #familySearchInput').collapse();
-    $w('#donorSearchTable, #donorSearchInput').collapse();
+    // --- FIX: Select and collapse each element individually ---
+    $w('#familySearchTable').collapse();
+    $w('#familySearchInput').collapse();
+    $w('#donorSearchTable').collapse();
+    $w('#donorSearchInput').collapse();
 
     // Check if a family is linked to this operation
     const linkedFamiliesCount = $w('#dataset1').getTotalCount();
 
     if (linkedFamiliesCount > 0) {
-        // If family is linked, show the individuals section
-        $w('#familyMembersDisplayTable, #linkedMemberRepeater, #newMemberBox').expand();
+        // --- FIX: Select and expand each element individually ---
+        $w('#familyMembersDisplayTable').expand();
+        $w('#linkedMemberRepeater').expand();
+        $w('#newMemberBox').expand();
     } else {
-        // Otherwise, hide the individuals section
-        $w('#familyMembersDisplayTable, #linkedMemberRepeater, #newMemberBox').collapse();
+        // --- FIX: Select and collapse each element individually ---
+        $w('#familyMembersDisplayTable').collapse();
+        $w('#linkedMemberRepeater').collapse();
+        $w('#newMemberBox').collapse();
     }
 }
 
@@ -82,10 +88,12 @@ function setupEventHandlers(currentOperation) {
 
     // --- "Add Existing" Button Handlers ---
     $w('#addExistingFamily').onClick(() => {
-        $w('#familySearchTable, #familySearchInput').expand();
+        $w('#familySearchTable').expand();
+        $w('#familySearchInput').expand();
     });
     $w('#addExistingDonor').onClick(() => {
-        $w('#donorSearchTable, #donorSearchInput').expand();
+        $w('#donorSearchTable').expand();
+        $w('#donorSearchInput').expand();
     });
 
     // --- Search Input Handlers ---
@@ -120,26 +128,26 @@ async function handleLink(operationId, selectedItem, type) {
             collectionName = COLLECTIONS.OPERATIONS;
             refField = FIELDS.OP_FAMILY_REF;
             linkedDataset = '#dataset1';
-            $w('#familySearchTable, #familySearchInput').collapse();
+            // --- FIX: Select and collapse each element individually ---
+            $w('#familySearchTable').collapse();
+            $w('#familySearchInput').collapse();
         } else if (type === 'Donor') {
             collectionName = COLLECTIONS.OPERATIONS;
             refField = FIELDS.OP_DONOR_REF;
             linkedDataset = '#dataset5';
-            $w('#donorSearchTable, #donorSearchInput').collapse();
+            // --- FIX: Select and collapse each element individually ---
+            $w('#donorSearchTable').collapse();
+            $w('#donorSearchInput').collapse();
         } else if (type === 'Individual') {
             collectionName = COLLECTIONS.OPERATIONS;
             refField = FIELDS.OP_INDIVIDUAL_REF;
             linkedDataset = '#dataset3';
         }
 
-        // Create the reference in the Operations collection
         await wixData.insertReference(collectionName, refField, operationId, selectedItem._id);
-        
-        // Refresh the corresponding repeater's dataset to show the new item
         await $w(linkedDataset).refresh();
         console.log(`Successfully linked ${type} ${selectedItem._id} to Operation ${operationId}`);
 
-        // If a family was just linked, refresh the UI
         if (type === 'Family') {
             await initialUiSetup();
         }
@@ -173,14 +181,10 @@ async function handleRemoveLink(operationId, itemIdToRemove, type) {
             linkedDataset = '#dataset3';
         }
 
-        // Remove the reference from the Operations collection
         await wixData.removeReference(collectionName, refField, operationId, itemIdToRemove);
-        
-        // Refresh the repeater's dataset to remove the item
         await $w(linkedDataset).refresh();
         console.log(`Successfully unlinked ${type} ${itemIdToRemove} from Operation ${operationId}`);
-        
-        // If a family was unlinked, refresh the UI
+
         if (type === 'Family') {
             await initialUiSetup();
         }
@@ -200,18 +204,17 @@ async function filterSearchTable(type) {
     if (type === 'Family') {
         searchDataset = '#dataset2';
         searchInput = '#familySearchInput';
-        searchableFields = ['headOfFamily', 'familyMembers', 'familyDescription']; // Add other fields as needed
+        searchableFields = ['headOfFamily', 'familyMembers', 'familyDescription'];
     } else { // 'Donor'
         searchDataset = '#dataset6';
         searchInput = '#donorSearchInput';
-        searchableFields = ['donorName', 'organizationName', 'donorEmail']; // Add other fields as needed
+        searchableFields = ['donorName', 'organizationName', 'donorEmail'];
     }
 
     const searchTerm = $w(searchInput).value;
     let filter = wixData.filter();
 
     if (searchTerm && searchTerm.length > 0) {
-        // Create an 'or' filter across all searchable fields
         filter = searchableFields.map(field => wixData.filter().contains(field, searchTerm))
                                  .reduce((f1, f2) => f1.or(f2));
     }
@@ -223,33 +226,28 @@ async function filterSearchTable(type) {
  * Creates a new individual item and links it to the currently displayed family.
  */
 async function handleAddNewMember() {
-    // Get the ID of the currently linked family
     const linkedFamily = await $w('#dataset1').getCurrentItem();
     if (!linkedFamily) {
         console.error("Cannot add member, no family is linked to this operation.");
-        // Consider showing a message to the user in the UI
         return;
     }
 
-    // Create the new member object from input fields
     const newMember = {
         age: $w('#newMemberAgeInput').value,
         boyOrGirl: $w('#newMemberBoyOrGirlInput').value,
         sizeOrInfo: $w('#newMemberSizeOrInfoInput').value,
-        // ACTION: This links the new individual to the current family
         [FIELDS.INDIVIDUAL_FAMILY_REF]: linkedFamily._id
     };
 
     try {
-        // Insert the new item into the 'Individuals' collection
         await wixData.insert(COLLECTIONS.INDIVIDUALS, newMember);
-        
-        // Refresh the table of family members to show the new addition
         await $w('#dataset4').refresh();
         console.log("Successfully added new family member.");
         
-        // Clear the input fields for the next entry
-        $w('#newMemberAgeInput, #newMemberBoyOrGirlInput, #newMemberSizeOrInfoInput').value = "";
+        // --- FIX: Clear each input field individually ---
+        $w('#newMemberAgeInput').value = "";
+        $w('#newMemberBoyOrGirlInput').value = "";
+        $w('#newMemberSizeOrInfoInput').value = "";
     } catch (err) {
         console.error("Failed to add new member:", err);
     }
