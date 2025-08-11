@@ -25,25 +25,32 @@ $w.onReady(function () {
     $w('#dynamicDataset').onReady(() => {
         const currentOperation = $w('#dynamicDataset').getCurrentItem();
 
-        // This critical check stops the code if the page fails to load an item.
         if (!currentOperation) {
             console.error("PAGE LOAD FAILED: The dynamic dataset could not load an item. Please check the URL.");
             return;
         }
 
-        // If the item loaded successfully, set up all page functionality.
         setupEventHandlers(currentOperation);
         initialUiSetup();
     });
 
-    // Event handler for the write-only dataset (#dataset7) used for adding new members.
+    // --- NEW: Event handler to modify the new member BEFORE it's saved ---
+    $w('#dataset7').onBeforeSave((itemToSave) => {
+        // Generate a unique, human-readable ID for the new individual.
+        const uniqueId = `IND-${Date.now()}`;
+        // Add the new ID to the 'individualId' field of the item.
+        itemToSave.individualId = uniqueId;
+
+        console.log(`Generating custom ID for new member: ${uniqueId}`);
+        // Return the modified item so the save operation can proceed.
+        return itemToSave;
+    });
+
+    // Event handler that runs AFTER a new member is saved.
     $w('#dataset7').onAfterSave(async () => {
         console.log("New member saved. Refreshing members table.");
-        // 1. Refresh the dataset that populates the members display table.
         await $w('#dataset4').refresh();
-        // 2. Ensure the individuals section is visible.
         await initialUiSetup();
-        // 3. Reset the form for the next entry.
         $w('#dataset7').new();
     });
 });
@@ -96,18 +103,16 @@ function setupEventHandlers(currentOperation) {
  * Sets the initial visibility of page elements when the page loads.
  */
 function initialUiSetup() {
-    // Collapse search sections until they are needed.
     $w('#familySearchTable').collapse();
     $w('#input3').collapse();
     $w('#donorSearchTable').collapse();
     $w('#searchInput').collapse();
 
-    // The "Individuals" section is only visible if a family is linked.
     const linkedFamiliesCount = $w('#dataset1').getTotalCount();
     if (linkedFamiliesCount > 0) {
         $w('#familyMembersDisplayTable').expand();
         $w('#linkedMemberRepeater').expand();
-        $w('#box148').expand(); // This box contains the "Add New Member" form
+        $w('#box148').expand();
     } else {
         $w('#familyMembersDisplayTable').collapse();
         $w('#linkedMemberRepeater').collapse();
@@ -116,10 +121,7 @@ function initialUiSetup() {
 }
 
 /**
- * Handles linking an item (Family, Donor, or Individual) to the current Operation.
- * @param {string} operationId The _id of the current operation.
- * @param {object} selectedItem The full item object selected from a search table.
- * @param {string} type The type of item being linked: 'Family', 'Donor', or 'Individual'.
+ * Handles linking an item to the current Operation.
  */
 async function handleLink(operationId, selectedItem, type) {
     try {
@@ -128,15 +130,11 @@ async function handleLink(operationId, selectedItem, type) {
         if (type === 'Family') {
             refField = FIELDS.OP_FAMILY_REF;
             linkedDataset = $w('#dataset1');
-          // This is the recommended approach
-            $w('#familySearchTable').collapse();
-            $w('#input3').collapse();
+            $w('#familySearchTable, #input3').collapse();
         } else if (type === 'Donor') {
             refField = FIELDS.OP_DONOR_REF;
             linkedDataset = $w('#dataset5');
-            // This is the recommended approach
-            $w('#donorSearchTable').collapse();
-            $w('#searchInput').collapse();
+            $w('#donorSearchTable, #searchInput').collapse();
         } else if (type === 'Individual') {
             refField = FIELDS.OP_INDIVIDUAL_REF;
             linkedDataset = $w('#dataset3');
@@ -144,12 +142,10 @@ async function handleLink(operationId, selectedItem, type) {
 
         await wixData.insertReference(COLLECTIONS.OPERATIONS, refField, operationId, selectedItem._id);
         await linkedDataset.refresh();
-        console.log(`Successfully linked ${type} ${selectedItem._id}`);
 
         if (type === 'Family') {
             await initialUiSetup();
         }
-
     } catch (err) {
         console.error(`Error linking ${type}:`, err);
     }
@@ -157,11 +153,9 @@ async function handleLink(operationId, selectedItem, type) {
 
 /**
  * Creates a new blank Family or Donor and links it to the current Operation.
- * @param {string} type The type of item to create: 'Family' or 'Donor'.
  */
 async function handleAddNew(type) {
     try {
-        // First, ensure the current Operation is saved to have a valid _id
         await $w('#dynamicDataset').save();
         const currentOperation = $w('#dynamicDataset').getCurrentItem();
         let collectionId, newItem;
@@ -174,13 +168,8 @@ async function handleAddNew(type) {
             newItem = { donorName: `New Donor - ${Date.now()}` };
         }
 
-        // 1. Insert the new blank item into its collection
         const newLinkedItem = await wixData.insert(collectionId, newItem);
-
-        // 2. Use the existing handleLink function to create the reference
         await handleLink(currentOperation._id, newLinkedItem, type);
-        console.log(`Successfully created and linked a new ${type}.`);
-
     } catch (err) {
         console.error(`Error creating new ${type}:`, err);
     }
@@ -188,9 +177,6 @@ async function handleAddNew(type) {
 
 /**
  * Handles removing a reference from the current Operation.
- * @param {string} operationId The _id of the current operation.
- * @param {string} itemIdToRemove The _id of the item to be unlinked.
- * @param {string} type The type of item being unlinked: 'Family', 'Donor', or 'Individual'.
  */
 async function handleRemoveLink(operationId, itemIdToRemove, type) {
     try {
@@ -209,12 +195,10 @@ async function handleRemoveLink(operationId, itemIdToRemove, type) {
 
         await wixData.removeReference(COLLECTIONS.OPERATIONS, refField, operationId, itemIdToRemove);
         await linkedDataset.refresh();
-        console.log(`Successfully unlinked ${type} ${itemIdToRemove}`);
 
         if (type === 'Family') {
             await initialUiSetup();
         }
-
     } catch (err) {
         console.error(`Error removing ${type} link:`, err);
     }
@@ -222,7 +206,6 @@ async function handleRemoveLink(operationId, itemIdToRemove, type) {
 
 /**
  * Filters the search tables for Families or Donors based on input.
- * @param {string} type The type of table to filter: 'Family' or 'Donor'.
  */
 async function filterSearchTable(type) {
     let searchDataset, searchInput, searchableFields;
