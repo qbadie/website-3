@@ -85,9 +85,11 @@ function setupEventHandlers(currentOperation) {
     $w('#linkedMemberRepeater').onItemReady(($item, itemData) => {
         $item('#removeLinkedMemberButton').onClick(() => handleRemoveLink(operationId, itemData._id, 'Individual'));
     });
-
+// Add these two lines inside your setupEventHandlers function
+    $w('#addNewFamily').onClick(() => handleAddNew('Family'));
+    $w('#addNewDonor').onClick(() => handleAddNew('Donor'));
     // --- "Add Existing" Button Handlers ---
-    $w('#addExistingFamily').onClick(() => {
+    $w('#addExistingFamily').onClick(() => {   
         $w('#familySearchTable').expand();
         $w('#input3').expand();
     });
@@ -242,4 +244,41 @@ async function handleAddNewMember() {
     } catch (err) {
         console.error("Failed to add new member:", err);
     }
+    /**
+ * Creates a new blank Family or Donor and links it to the current Operation.
+ * @param {string} type - The type of item to create: 'Family' or 'Donor'.
+ */
+async function handleAddNew(type) {
+    try {
+        // First, ensure the current Operation is saved to have a valid _id
+        await $w('#dynamicDataset').save();
+        const currentOperation = $w('#dynamicDataset').getCurrentItem();
+        
+        let collectionId, newItem;
+
+        if (type === 'Family') {
+            collectionId = COLLECTIONS.FAMILIES;
+            // Create a placeholder item. The timestamp makes it unique and easy to find.
+            newItem = { headOfFamily: `New Family - ${Date.now()}` };
+        } else { // Donor
+            collectionId = COLLECTIONS.DONORS;
+            newItem = { donorName: `New Donor - ${Date.now()}` };
+        }
+
+        // 1. Insert the new blank item into its collection
+        const newLinkedItem = await wixData.insert(collectionId, newItem);
+
+        // 2. Use our existing handleLink function to create the reference
+        await handleLink(currentOperation._id, newLinkedItem, type);
+        
+        console.log(`Successfully created and linked a new ${type}.`);
+
+    } catch (err) {
+        console.error(`Error creating new ${type}:`, err);
+    }
+}
+}
+
+function handleAddNew(arg0) {
+    throw new Error('Function not implemented.');
 }
