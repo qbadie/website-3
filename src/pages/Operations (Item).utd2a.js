@@ -135,7 +135,7 @@ function loadUniqueId() {
     // Set the value of the input field. The dataset will get the ID from here upon save.
     $w('#individualIdInput').value = uniqueId;
     // Also set the title field in the dataset to prevent "Untitled" items.
-    $w('#dataset7').setFieldValue('title', `Member - ${uniqueId}`);
+    $w('#dataset7').setFieldValue('individualId', `${uniqueId}`);
 }
 
 /**
