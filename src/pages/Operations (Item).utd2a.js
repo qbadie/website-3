@@ -20,22 +20,32 @@ const FIELDS = {
 // ====================================================================
 
 $w.onReady(function () {
+    // Set the initial collapsed state of search UI elements.
     setInitialUiState();
 
+    // This is the main dataset for the current "Operation" item on the page.
     $w('#dynamicDataset').onReady(() => {
         const currentOperation = $w('#dynamicDataset').getCurrentItem();
         if (!currentOperation) {
             console.error("PAGE LOAD FAILED: The dynamic dataset could not load an item. Please check the URL.");
             return;
         }
+        // Set up all button and input event handlers once the main item is loaded.
         setupEventHandlers(currentOperation);
-        loadUniqueId();
-
-        $w('#dataset1').onReady(async () => {
-            await populateMembersTableAndUpdateVisibility();
-        });
     });
 
+    // Wait for the linked family dataset to be ready before populating the members table.
+    $w('#dataset1').onReady(async () => {
+        await populateMembersTableAndUpdateVisibility();
+    });
+
+    // --- FIX: Wait for the "Add New Member" dataset to be ready before preparing it. ---
+    $w('#dataset7').onReady(() => {
+        // Pre-load the first unique ID for the form.
+        loadUniqueId();
+    });
+
+    // This event runs AFTER a new member is saved via the dataset.
     $w('#dataset7').onAfterSave(async (savedIndividual) => {
         console.log("New member saved. Now creating two-way reference.");
         const linkedFamily = await $w('#dataset1').getCurrentItem();
@@ -44,17 +54,9 @@ $w.onReady(function () {
             await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, savedIndividual._id, linkedFamily._id);
         }
         await populateMembersTableAndUpdateVisibility();
-        loadUniqueId();
+        loadUniqueId(); // Prepare a new ID for the next entry
     });
 });
-
-/**
- * A helper function to create a small delay.
- * @param {number} ms - The number of milliseconds to wait.
- */
-function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 /**
  * Sets the initial collapsed state of search elements.
@@ -64,12 +66,10 @@ function setInitialUiState() {
 }
 
 /**
- * --- UPDATED: Populates the table after a short delay to fix the timing issue. ---
+ * Populates the table and updates visibility for the individuals section.
  */
 async function populateMembersTableAndUpdateVisibility() {
     await $w('#dataset1').refresh();
-    // This small delay gives the dataset time to fully load its referenced items.
-    await delay(200); 
     const linkedFamily = $w('#dataset1').getCurrentItem();
 
     if (linkedFamily) {
@@ -93,7 +93,6 @@ function setupEventHandlers(currentOperation) {
     $w('#AddNewMemberButton').onClick(() => {
         if ($w('#newMemberAgeInput').validity.valid && $w('#newMemberBoyOrGirlInput').validity.valid && $w('#newMemberSizeOrInfoInput').validity.valid) {
             $w('#newMemberErrorText').collapse();
-            $w('#dataset7').setFieldValue('title', `Member - ${$w('#individualIdInput').value}`);
             $w('#dataset7').save();
         } else {
             $w('#newMemberErrorText').text = "All member fields are required.";
@@ -134,6 +133,7 @@ function loadUniqueId() {
     const uniqueId = `IND-${year}${month}${day}${hours}${minutes}${seconds}`;
     $w('#individualIdInput').value = uniqueId;
     $w('#dataset7').setFieldValue('individualId', uniqueId);
+    $w('#dataset7').setFieldValue('title', `Member - ${uniqueId}`);
 }
 
 /**
@@ -156,12 +156,8 @@ async function handleLink(operationId, selectedItem, type) {
             await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.OP_INDIVIDUAL_REF_REVERSE, selectedItem._id, operationId);
         }
         await wixData.insertReference(COLLECTIONS.OPERATIONS, refField, operationId, selectedItem._id);
-        
-        if (type === 'Family') {
-            await populateMembersTableAndUpdateVisibility();
-        } else {
-             await linkedDataset.refresh();
-        }
+        await linkedDataset.refresh();
+        if (type === 'Family') await populateMembersTableAndUpdateVisibility();
     } catch (err) { console.error(`Error linking ${type}:`, err); }
 }
 
@@ -172,10 +168,6 @@ async function handleRemoveLink(operationId, itemIdToRemove, type) {
     try {
         let refField, linkedDataset;
         if (type === 'Family') {
-            const { items: individualsToRemove } = await $w('#dataset3').getItems(0, $w('#dataset3').getTotalCount());
-            for (const individual of individualsToRemove) {
-                await handleRemoveLink(operationId, individual._id, 'Individual');
-            }
             refField = FIELDS.OP_FAMILY_REF;
             linkedDataset = $w('#dataset1');
         } else if (type === 'Donor') {
@@ -187,12 +179,8 @@ async function handleRemoveLink(operationId, itemIdToRemove, type) {
             await wixData.removeReference(COLLECTIONS.INDIVIDUALS, FIELDS.OP_INDIVIDUAL_REF_REVERSE, itemIdToRemove, operationId);
         }
         await wixData.removeReference(COLLECTIONS.OPERATIONS, refField, operationId, itemIdToRemove);
-       
-         if (type === 'Family') {
-            await populateMembersTableAndUpdateVisibility();
-        } else {
-             await linkedDataset.refresh();
-        }
+        await linkedDataset.refresh();
+        if (type === 'Family') await populateMembersTableAndUpdateVisibility();
     } catch (err) { console.error(`Error removing ${type} link:`, err); }
 }
 
