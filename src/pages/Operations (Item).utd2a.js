@@ -20,30 +20,26 @@ const FIELDS = {
 // ====================================================================
 
 $w.onReady(function () {
-    // This is the main dataset for the current "Operation" item on the page.
-    $w('#dynamicDataset').onReady(() => {
+    $w('#dynamicDataset').onReady(async () => {
         const currentOperation = $w('#dynamicDataset').getCurrentItem();
         if (!currentOperation) {
             console.error("PAGE LOAD FAILED: The dynamic dataset could not load an item. Please check the URL.");
             return;
         }
-
-        // 1. Set up all button and input event handlers immediately.
         setupEventHandlers(currentOperation);
-        
-        // 2. Now wait for the linked family dataset to be ready.
-        $w('#dataset1').onReady(async () => {
-            // 3. Once BOTH datasets are ready, it is safe to set up the page UI.
-            await initialUiSetup();
-        });
+        await initialUiSetup();
     });
 
-    // Event handlers for the "Add New Member" form dataset
     $w('#dataset7').onBeforeSave((itemToSave) => {
-        if (!itemToSave) {
-            console.error("onBeforeSave triggered with an undefined item.");
-            return Promise.reject("Cannot save an undefined item.");
+        // --- VALIDATION GATE: This is the critical fix ---
+        // If the item about to be saved is missing essential data, stop the save.
+        if (!itemToSave.age || !itemToSave.boyOrGirl || !itemToSave.sizeOrInfo) {
+            console.log("Blocking save of empty member.");
+            // Using Promise.reject is the correct way to cancel a save from this event.
+            return Promise.reject("Validation Failed: Member data is missing.");
         }
+
+        // If validation passes, proceed to add the ID and title.
         const uniqueId = `IND-${Date.now()}`;
         itemToSave.individualId = uniqueId;
         itemToSave.title = `Member - ${uniqueId}`;
@@ -51,6 +47,7 @@ $w.onReady(function () {
     });
 
     $w('#dataset7').onAfterSave(async (savedIndividual) => {
+        console.log("New member saved. Now creating two-way reference.");
         const linkedFamily = await $w('#dataset1').getCurrentItem();
         if (linkedFamily && savedIndividual) {
             await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, linkedFamily._id, savedIndividual._id);
@@ -66,19 +63,6 @@ $w.onReady(function () {
  */
 function setupEventHandlers(currentOperation) {
     const operationId = currentOperation._id;
-    $w('#AddNewMemberButton').onClick(() => {
-        const age = $w('#newMemberAgeInput').value;
-        const boyOrGirl = $w('#newMemberBoyOrGirlInput').value;
-        const sizeOrInfo = $w('#newMemberSizeOrInfoInput').value;
-
-        if (age && boyOrGirl && sizeOrInfo) {
-            $w('#newMemberErrorText').collapse();
-            $w('#dataset7').save();
-        } else {
-            $w('#newMemberErrorText').text = "All member fields are required.";
-            $w('#newMemberErrorText').expand();
-        }
-    });
     $w('#linkedFamilyRepeater').onItemReady(($item, itemData) => {
         $item('#removeLinkedFamilyButton').onClick(() => handleRemoveLink(operationId, itemData._id, 'Family'));
     });
@@ -98,14 +82,11 @@ function setupEventHandlers(currentOperation) {
 }
 
 /**
- * Populates the family members table and sets element visibility.
+ * Populates the family members table purely with code.
  */
 async function initialUiSetup() {
     $w('#familySearchTable, #input3, #donorSearchTable, #searchInput').collapse();
-    
-    // Refresh the dataset to ensure we have the latest linked family data.
-    await $w('#dataset1').refresh();
-    const linkedFamily = $w('#dataset1').getCurrentItem();
+    const linkedFamily = await $w('#dataset1').getCurrentItem();
 
     if (linkedFamily) {
         const results = await wixData.query(COLLECTIONS.INDIVIDUALS)
@@ -117,21 +98,6 @@ async function initialUiSetup() {
         $w('#familyMembersDisplayTable').rows = [];
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').collapse();
     }
-}
-
-/**
- * Generates a unique ID in the format IND-YYMMDDHHMMSS.
- */
-function generateCustomId() {
-    const now = new Date();
-    const pad = (num) => String(num).padStart(2, '0');
-    const year = String(now.getFullYear()).slice(-2);
-    const month = pad(now.getMonth() + 1);
-    const day = pad(now.getDate());
-    const hours = pad(now.getHours());
-    const minutes = pad(now.getMinutes());
-    const seconds = pad(now.getSeconds());
-    return `IND-${year}${month}${day}${hours}${minutes}${seconds}`;
 }
 
 /**
@@ -183,7 +149,7 @@ async function handleRemoveLink(operationId, itemIdToRemove, type) {
 }
 
 /**
- * Filters the search tables for Families or Donors.
+ * Filters the search tables for Families or Donors based on input.
  */
 async function filterSearchTable(type) {
     let searchDataset, searchInput, searchableFields;
