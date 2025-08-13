@@ -62,19 +62,31 @@ function setInitialUiState() {
 }
 
 /**
- * Populates the table and updates visibility for the individuals section.
+ * --- UPDATED: Populates the table using a direct and robust data query. ---
  */
 async function populateMembersTableAndUpdateVisibility() {
-    await $w('#dataset1').refresh();
-    // --- FIX: Add a small delay to resolve the timing issue ---
-    await delay(100); 
-    const linkedFamily = $w('#dataset1').getCurrentItem();
+    // Get the main operation item, which we know is ready.
+    const currentOperation = $w('#dynamicDataset').getCurrentItem();
+    // Directly check the reference field for a linked family.
+    const familyRef = currentOperation[FIELDS.OP_FAMILY_REF];
 
-    if (linkedFamily) {
-        const results = await wixData.query(COLLECTIONS.INDIVIDUALS)
-            .hasSome(FIELDS.INDIVIDUAL_FAMILY_REF, linkedFamily._id)
-            .find();
-        $w('#familyMembersDisplayTable').rows = results.items;
+    if (familyRef && familyRef.length > 0) {
+        const familyId = familyRef[0]._id;
+
+        // Use wixData.get() with .include() to guarantee all member data is loaded.
+        const linkedFamily = await wixData.get(COLLECTIONS.FAMILIES, familyId, {
+            "include": [FIELDS.FAMILY_MEMBERS_REF]
+        });
+
+        const memberRefs = linkedFamily[FIELDS.FAMILY_MEMBERS_REF] || [];
+        
+        if (memberRefs.length > 0) {
+            // The referenced items are already included, so we can use them directly.
+            $w('#familyMembersDisplayTable').rows = memberRefs;
+        } else {
+            $w('#familyMembersDisplayTable').rows = [];
+        }
+        
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').expand();
     } else {
         $w('#familyMembersDisplayTable').rows = [];
