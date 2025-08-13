@@ -20,45 +20,18 @@ const FIELDS = {
 // ====================================================================
 
 $w.onReady(function () {
-    // This is the main dataset for the current "Operation" item on the page.
-    $w('#dynamicDataset').onReady(() => {
+    $w('#dynamicDataset').onReady(async () => {
         const currentOperation = $w('#dynamicDataset').getCurrentItem();
         if (!currentOperation) {
             console.error("PAGE LOAD FAILED: The dynamic dataset could not load an item. Please check the URL.");
             return;
         }
-
-        // 1. Set up all button and input event handlers immediately.
+        await $w('#dataset1').refresh();
         setupEventHandlers(currentOperation);
-        
-        // 2. Now wait for the linked family dataset to be ready.
-        $w('#dataset1').onReady(async () => {
-            // 3. Once it's ready, it is safe to refresh it and then set up the page UI.
-            await initialUiSetup();
-        });
-    });
-
-    // Event handlers for the "Add New Member" form dataset
-    $w('#dataset7').onBeforeSave((itemToSave) => {
-        if (!itemToSave) {
-            console.error("onBeforeSave triggered with an undefined item.");
-            return Promise.reject("Cannot save an undefined item.");
-        }
-        const uniqueId = `IND-${Date.now()}`;
-        itemToSave.individualId = uniqueId;
-        itemToSave.title = `Member - ${uniqueId}`;
-        return itemToSave;
-    });
-
-    $w('#dataset7').onAfterSave(async (savedIndividual) => {
-        const linkedFamily = await $w('#dataset1').getCurrentItem();
-        if (linkedFamily && savedIndividual) {
-            await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, linkedFamily._id, savedIndividual._id);
-            await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, savedIndividual._id, linkedFamily._id);
-        }
         await initialUiSetup();
-        $w('#dataset7').new();
     });
+
+    // NOTE: The onBeforeSave and onAfterSave handlers for #dataset7 have been removed.
 });
 
 /**
@@ -66,6 +39,10 @@ $w.onReady(function () {
  */
 function setupEventHandlers(currentOperation) {
     const operationId = currentOperation._id;
+    
+    // --- "Add New Member" button click handler ---
+    $w('#AddNewMemberButton').onClick(() => handleAddNewMember());
+
     $w('#linkedFamilyRepeater').onItemReady(($item, itemData) => {
         $item('#removeLinkedFamilyButton').onClick(() => handleRemoveLink(operationId, itemData._id, 'Family'));
     });
@@ -85,13 +62,10 @@ function setupEventHandlers(currentOperation) {
 }
 
 /**
- * Populates the family members table and sets element visibility.
+ * Populates the family members table purely with code.
  */
 async function initialUiSetup() {
     $w('#familySearchTable, #input3, #donorSearchTable, #searchInput').collapse();
-    
-    // Refresh the dataset to ensure we have the latest data before getting the item.
-    await $w('#dataset1').refresh();
     const linkedFamily = await $w('#dataset1').getCurrentItem();
 
     if (linkedFamily) {
@@ -103,6 +77,59 @@ async function initialUiSetup() {
     } else {
         $w('#familyMembersDisplayTable').rows = [];
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').collapse();
+    }
+}
+
+/**
+ * Generates a unique ID in the format IND-YYMMDDHHMMSS.
+ */
+function generateCustomId() {
+    const now = new Date();
+    const pad = (num) => String(num).padStart(2, '0');
+    const year = String(now.getFullYear()).slice(-2);
+    const month = pad(now.getMonth() + 1);
+    const day = pad(now.getDate());
+    const hours = pad(now.getHours());
+    const minutes = pad(now.getMinutes());
+    const seconds = pad(now.getSeconds());
+    return `IND-${year}${month}${day}${hours}${minutes}${seconds}`;
+}
+
+/**
+ * Handles all logic for adding a new family member when the button is clicked.
+ */
+async function handleAddNewMember() {
+    const linkedFamily = await $w('#dataset1').getCurrentItem();
+    if (!linkedFamily) {
+        console.error("Cannot add member: no family is linked.");
+        return;
+    }
+
+    const customId = generateCustomId();
+    const newMemberData = {
+        age: $w('#newMemberAgeInput').value,
+        boyOrGirl: $w('#newMemberBoyOrGirlInput').value,
+        sizeOrInfo: $w('#newMemberSizeOrInfoInput').value,
+        individualId: customId,
+        title: `Member - ${customId}`
+    };
+
+    try {
+        // 1. Insert the new individual item.
+        const newIndividual = await wixData.insert(COLLECTIONS.INDIVIDUALS, newMemberData);
+
+        // 2. Create the two-way reference between the new member and the family.
+        await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, linkedFamily._id, newIndividual._id);
+        await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, newIndividual._id, linkedFamily._id);
+        
+        // 3. Refresh the table and clear the inputs.
+        await initialUiSetup();
+        $w('#newMemberAgeInput').value = "";
+        $w('#newMemberBoyOrGirlInput').value = "";
+        $w('#newMemberSizeOrInfoInput').value = "";
+
+    } catch (err) {
+        console.error("Failed to add new member:", err);
     }
 }
 
