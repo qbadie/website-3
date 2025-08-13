@@ -21,6 +21,7 @@ const FIELDS = {
 
 $w.onReady(function () {
     setInitialUiState();
+
     $w('#dynamicDataset').onReady(() => {
         const currentOperation = $w('#dynamicDataset').getCurrentItem();
         if (!currentOperation) {
@@ -29,6 +30,7 @@ $w.onReady(function () {
         }
         setupEventHandlers(currentOperation);
         loadUniqueId();
+
         $w('#dataset1').onReady(async () => {
             await populateMembersTableAndUpdateVisibility();
         });
@@ -62,12 +64,12 @@ function setInitialUiState() {
 }
 
 /**
- * Populates the table and updates visibility for the individuals section.
+ * --- UPDATED: Populates the table after a short delay to fix the timing issue. ---
  */
 async function populateMembersTableAndUpdateVisibility() {
     await $w('#dataset1').refresh();
-    // --- FIX: Add a small delay to resolve the timing issue ---
-    await delay(100); 
+    // This small delay gives the dataset time to fully load its referenced items.
+    await delay(200); 
     const linkedFamily = $w('#dataset1').getCurrentItem();
 
     if (linkedFamily) {
@@ -164,22 +166,18 @@ async function handleLink(operationId, selectedItem, type) {
 }
 
 /**
- * --- UPDATED: Handles removing a reference from the current Operation. ---
+ * Handles removing a reference from the current Operation.
  */
 async function handleRemoveLink(operationId, itemIdToRemove, type) {
     try {
         let refField, linkedDataset;
-
         if (type === 'Family') {
-            // --- FIX: When removing a family, first remove all its linked individuals from the operation ---
             const { items: individualsToRemove } = await $w('#dataset3').getItems(0, $w('#dataset3').getTotalCount());
             for (const individual of individualsToRemove) {
                 await handleRemoveLink(operationId, individual._id, 'Individual');
             }
-            // Now proceed with removing the family
             refField = FIELDS.OP_FAMILY_REF;
             linkedDataset = $w('#dataset1');
-
         } else if (type === 'Donor') {
             refField = FIELDS.OP_DONOR_REF;
             linkedDataset = $w('#dataset5');
