@@ -20,7 +20,7 @@ const FIELDS = {
 // ====================================================================
 
 $w.onReady(function () {
-    // --- FIX: Set the initial state of the UI immediately ---
+    // This structure reliably loads the page and prevents timing issues.
     setInitialUiState();
 
     $w('#dynamicDataset').onReady(() => {
@@ -30,36 +30,49 @@ $w.onReady(function () {
             return;
         }
         setupEventHandlers(currentOperation);
-        loadUniqueId(); // Pre-load the first unique ID for the form
+        loadUniqueId(); 
 
-        // --- FIX: Wait for the linked family dataset to be ready before populating the table ---
         $w('#dataset1').onReady(async () => {
             await populateMembersTableAndUpdateVisibility();
         });
     });
 
-    $w('#dataset7').onAfterSave(async () => {
-        console.log("New member saved. Refreshing table and form.");
+    // --- This stable logic for saving a new member is from the "older" successful version ---
+    $w('#dataset7').onBeforeSave((itemToSave) => {
+        // Validation Gate: Prevents saving blank rows.
+        if (!itemToSave.age || !itemToSave.boyOrGirl || !itemToSave.sizeOrInfo) {
+            console.log("Blocking save of empty member.");
+            return Promise.reject("Validation Failed: Member data is missing.");
+        }
+        const uniqueId = $w('#individualIdInput').value;
+        itemToSave.title = `Member - ${uniqueId}`;
+        return itemToSave;
+    });
+
+    $w('#dataset7').onAfterSave(async (savedIndividual) => {
+        console.log("New member saved. Now creating two-way reference.");
+        const linkedFamily = await $w('#dataset1').getCurrentItem();
+        if (linkedFamily && savedIndividual) {
+            await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, linkedFamily._id, savedIndividual._id);
+            await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, savedIndividual._id, linkedFamily._id);
+        }
         await populateMembersTableAndUpdateVisibility();
-        loadUniqueId();
+        loadUniqueId(); // Prepare a new ID for the next entry
     });
 });
 
 /**
- * --- NEW: Sets the initial collapsed state of search elements ---
+ * Sets the initial collapsed state of search elements.
  */
 function setInitialUiState() {
-    $w('#familySearchTable').collapse();
-    $w('#input3').collapse();
-    $w('#donorSearchTable').collapse();
-    $w('#searchInput').collapse();
+    $w('#familySearchTable, #input3, #donorSearchTable, #searchInput').collapse();
 }
 
 /**
- * --- NEW: Combines table population and UI visibility into one function ---
+ * Populates the table and updates visibility for the individuals section.
  */
 async function populateMembersTableAndUpdateVisibility() {
-    await $w('#dataset1').refresh(); // Ensure we have the absolute latest data
+    await $w('#dataset1').refresh();
     const linkedFamily = $w('#dataset1').getCurrentItem();
 
     if (linkedFamily) {
@@ -83,7 +96,7 @@ function setupEventHandlers(currentOperation) {
     $w('#AddNewMemberButton').onClick(() => {
         if ($w('#newMemberAgeInput').validity.valid && $w('#newMemberBoyOrGirlInput').validity.valid && $w('#newMemberSizeOrInfoInput').validity.valid) {
             $w('#newMemberErrorText').collapse();
-            $w('#dataset7').setFieldValue('title', `Member - ${$w('#individualIdInput').value}`);
+            // This safely triggers the onBeforeSave and onAfterSave events.
             $w('#dataset7').save();
         } else {
             $w('#newMemberErrorText').text = "All member fields are required.";
@@ -146,13 +159,8 @@ async function handleLink(operationId, selectedItem, type) {
             await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.OP_INDIVIDUAL_REF_REVERSE, selectedItem._id, operationId);
         }
         await wixData.insertReference(COLLECTIONS.OPERATIONS, refField, operationId, selectedItem._id);
-        
-        // After linking, refresh the relevant dataset. The onReady handler will take care of the UI update.
-        if (type === 'Family') {
-            await linkedDataset.refresh();
-        } else {
-             await linkedDataset.refresh();
-        }
+        await linkedDataset.refresh();
+        if (type === 'Family') await populateMembersTableAndUpdateVisibility();
     } catch (err) { console.error(`Error linking ${type}:`, err); }
 }
 
@@ -174,13 +182,8 @@ async function handleRemoveLink(operationId, itemIdToRemove, type) {
             await wixData.removeReference(COLLECTIONS.INDIVIDUALS, FIELDS.OP_INDIVIDUAL_REF_REVERSE, itemIdToRemove, operationId);
         }
         await wixData.removeReference(COLLECTIONS.OPERATIONS, refField, operationId, itemIdToRemove);
-       
-        // After removing a link, refresh the relevant dataset. The onReady handler will take care of the UI update.
-         if (type === 'Family') {
-            await linkedDataset.refresh();
-        } else {
-             await linkedDataset.refresh();
-        }
+        await linkedDataset.refresh();
+        if (type === 'Family') await populateMembersTableAndUpdateVisibility();
     } catch (err) { console.error(`Error removing ${type} link:`, err); }
 }
 
