@@ -31,7 +31,29 @@ $w.onReady(function () {
         await initialUiSetup();
     });
 
-    // NOTE: The onBeforeSave and onAfterSave handlers for #dataset7 have been removed.
+    // This event runs BEFORE a new member is saved via the dataset.
+    $w('#dataset7').onBeforeSave((itemToSave) => {
+        if (!itemToSave) {
+            console.error("onBeforeSave triggered with an undefined item.");
+            return Promise.reject("Cannot save an undefined item.");
+        }
+        const customId = generateCustomId();
+        itemToSave.individualId = customId;
+        itemToSave.title = `Member - ${customId}`;
+        return itemToSave;
+    });
+
+    // This event runs AFTER a new member is saved via the dataset.
+    $w('#dataset7').onAfterSave(async (savedIndividual) => {
+        console.log("New member saved. Now creating two-way reference.");
+        const linkedFamily = await $w('#dataset1').getCurrentItem();
+        if (linkedFamily && savedIndividual) {
+            await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, linkedFamily._id, savedIndividual._id);
+            await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, savedIndividual._id, linkedFamily._id);
+        }
+        await initialUiSetup();
+        $w('#dataset7').new();
+    });
 });
 
 /**
@@ -39,9 +61,24 @@ $w.onReady(function () {
  */
 function setupEventHandlers(currentOperation) {
     const operationId = currentOperation._id;
-    
-    // --- "Add New Member" button click handler ---
-    $w('#AddNewMemberButton').onClick(() => handleAddNewMember());
+
+    // --- UPDATED: "Add New Member" button validates and then saves the dataset ---
+    $w('#AddNewMemberButton').onClick(() => {
+        // 1. Validate the input fields
+        const age = $w('#newMemberAgeInput').value;
+        const boyOrGirl = $w('#newMemberBoyOrGirlInput').value;
+        const sizeOrInfo = $w('#newMemberSizeOrInfoInput').value;
+
+        if (age && boyOrGirl && sizeOrInfo) {
+            // 2. If valid, hide any previous error and save the dataset
+            $w('#newMemberErrorText').collapse();
+            $w('#dataset7').save();
+        } else {
+            // 3. If invalid, show an error message
+            $w('#newMemberErrorText').text = "All member fields are required.";
+            $w('#newMemberErrorText').expand();
+        }
+    });
 
     $w('#linkedFamilyRepeater').onItemReady(($item, itemData) => {
         $item('#removeLinkedFamilyButton').onClick(() => handleRemoveLink(operationId, itemData._id, 'Family'));
@@ -93,44 +130,6 @@ function generateCustomId() {
     const minutes = pad(now.getMinutes());
     const seconds = pad(now.getSeconds());
     return `IND-${year}${month}${day}${hours}${minutes}${seconds}`;
-}
-
-/**
- * Handles all logic for adding a new family member when the button is clicked.
- */
-async function handleAddNewMember() {
-    const linkedFamily = await $w('#dataset1').getCurrentItem();
-    if (!linkedFamily) {
-        console.error("Cannot add member: no family is linked.");
-        return;
-    }
-
-    const customId = generateCustomId();
-    const newMemberData = {
-        age: $w('#newMemberAgeInput').value,
-        boyOrGirl: $w('#newMemberBoyOrGirlInput').value,
-        sizeOrInfo: $w('#newMemberSizeOrInfoInput').value,
-        individualId: customId,
-        title: `Member - ${customId}`
-    };
-
-    try {
-        // 1. Insert the new individual item.
-        const newIndividual = await wixData.insert(COLLECTIONS.INDIVIDUALS, newMemberData);
-
-        // 2. Create the two-way reference between the new member and the family.
-        await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, linkedFamily._id, newIndividual._id);
-        await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, newIndividual._id, linkedFamily._id);
-        
-        // 3. Refresh the table and clear the inputs.
-        await initialUiSetup();
-        $w('#newMemberAgeInput').value = "";
-        $w('#newMemberBoyOrGirlInput').value = "";
-        $w('#newMemberSizeOrInfoInput').value = "";
-
-    } catch (err) {
-        console.error("Failed to add new member:", err);
-    }
 }
 
 /**
