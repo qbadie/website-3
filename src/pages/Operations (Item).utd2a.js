@@ -2,6 +2,7 @@ import wixData from 'wix-data';
 
 // ====================================================================
 // --- Configuration ---
+// Final version with all correct field keys.
 const COLLECTIONS = {
     OPERATIONS: "Import3",
     FAMILIES: "Import4",
@@ -13,7 +14,12 @@ const FIELDS = {
     OP_FAMILY_REF: "linkedFamily",
     OP_DONOR_REF: "linkedDonor",
     OP_INDIVIDUAL_REF: "linkedIndividual",
-    FAMILY_MEMBERS_REF: "Import4_linkedFamilyMembers" // Multi-Reference field on the Family item
+    // Field on the Individual item for the reverse link to the Operation
+    OP_INDIVIDUAL_REF_REVERSE: "Import3_linkedIndividual", 
+    // Field on the Family item pointing to Individuals
+    FAMILY_MEMBERS_REF: "Import6_import_4_linked_family_members", 
+    // Field on the Individual item pointing to a Family
+    INDIVIDUAL_FAMILY_REF: "import_4_linked_family_members" 
 };
 // ====================================================================
 
@@ -28,24 +34,23 @@ $w.onReady(function () {
         await initialUiSetup();
     });
 
-    // This event runs BEFORE a new member is saved.
     $w('#dataset7').onBeforeSave((itemToSave) => {
-        // --- ADDED: Safety check to prevent the 'undefined' error. ---
         if (!itemToSave) {
             console.error("onBeforeSave triggered with an undefined item.");
             return Promise.reject("Cannot save an undefined item.");
         }
         const uniqueId = `IND-${Date.now()}`;
         itemToSave.individualId = uniqueId;
+        itemToSave.title = `Member - ${uniqueId}`;
         return itemToSave;
     });
 
-    // This event runs AFTER a new member is saved.
     $w('#dataset7').onAfterSave(async (savedIndividual) => {
+        console.log("New member saved. Now creating two-way reference.");
         const linkedFamily = await $w('#dataset1').getCurrentItem();
         if (linkedFamily && savedIndividual) {
-            // This will now work correctly after you fix the field type in the CMS.
             await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, linkedFamily._id, savedIndividual._id);
+            await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, savedIndividual._id, linkedFamily._id);
         }
         await initialUiSetup();
         $w('#dataset7').new();
@@ -57,6 +62,7 @@ $w.onReady(function () {
  */
 function setupEventHandlers(currentOperation) {
     const operationId = currentOperation._id;
+
     $w('#linkedFamilyRepeater').onItemReady(($item, itemData) => {
         $item('#removeLinkedFamilyButton').onClick(() => handleRemoveLink(operationId, itemData._id, 'Family'));
     });
@@ -66,43 +72,46 @@ function setupEventHandlers(currentOperation) {
     $w('#linkedMemberRepeater').onItemReady(($item, itemData) => {
         $item('#removeLinkedMemberButton').onClick(() => handleRemoveLink(operationId, itemData._id, 'Individual'));
     });
+
     $w('#addExistingFamily').onClick(() => $w('#familySearchTable, #input3').expand());
     $w('#addExistingDonor').onClick(() => $w('#donorSearchTable, #searchInput').expand());
-    $w('#addNewFamily').onClick(() => handleAddNew('Family'));
-    $w('#addNewDonor').onClick(() => handleAddNew('Donor'));
+
+    // NOTE: "Add New" button handlers for Family and Donor have been removed as requested.
+
     $w('#input3').onInput(() => filterSearchTable('Family'));
     $w('#searchInput').onInput(() => filterSearchTable('Donor'));
+
     $w('#familySearchTable').onRowSelect((event) => handleLink(operationId, event.rowData, 'Family'));
     $w('#donorSearchTable').onRowSelect((event) => handleLink(operationId, event.rowData, 'Donor'));
     $w('#familyMembersDisplayTable').onRowSelect((event) => handleLink(operationId, event.rowData, 'Individual'));
 }
 
 /**
- * Sets visibility and filters the individuals table with code.
+ * --- UPDATED: Populates the family members table purely with code. ---
  */
 async function initialUiSetup() {
     $w('#familySearchTable, #input3, #donorSearchTable, #searchInput').collapse();
     const linkedFamily = await $w('#dataset1').getCurrentItem();
 
     if (linkedFamily) {
-        // This will now work correctly after you fix the field type in the CMS.
-        const memberRefs = linkedFamily[FIELDS.FAMILY_MEMBERS_REF] || [];
-        const memberIds = memberRefs.map(ref => ref._id);
+        // 1. Query the Individuals collection.
+        const results = await wixData.query(COLLECTIONS.INDIVIDUALS)
+            .hasSome(FIELDS.INDIVIDUAL_FAMILY_REF, linkedFamily._id)
+            .find();
         
-        if (memberIds.length > 0) {
-            const filter = wixData.filter().hasSome("_id", memberIds);
-            await $w('#dataset4').setFilter(filter);
-        } else {
-            await $w('#dataset4').setFilter(wixData.filter().eq("_id", "no_item_will_match_this"));
-        }
+        // 2. Assign the results directly to the table's .rows property.
+        // This works because your Column IDs match the field keys.
+        $w('#familyMembersDisplayTable').rows = results.items;
+        
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').expand();
     } else {
+        $w('#familyMembersDisplayTable').rows = []; // Clear the table if no family is linked
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').collapse();
     }
 }
 
 /**
- * Handles linking an item to the current Operation.
+ * --- UPDATED: Handles two-way reference for Individuals. ---
  */
 async function handleLink(operationId, selectedItem, type) {
     try {
@@ -118,35 +127,19 @@ async function handleLink(operationId, selectedItem, type) {
         } else if (type === 'Individual') {
             refField = FIELDS.OP_INDIVIDUAL_REF;
             linkedDataset = $w('#dataset3');
+            // Create the reverse reference from Individual -> Operation
+            await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.OP_INDIVIDUAL_REF_REVERSE, selectedItem._id, operationId);
         }
+        // Create the primary reference from Operation -> Other Item
         await wixData.insertReference(COLLECTIONS.OPERATIONS, refField, operationId, selectedItem._id);
+        
         await linkedDataset.refresh();
         if (type === 'Family') await initialUiSetup();
     } catch (err) { console.error(`Error linking ${type}:`, err); }
 }
 
 /**
- * Creates a new blank Family or Donor and links it to the current Operation.
- */
-async function handleAddNew(type) {
-    try {
-        await $w('#dynamicDataset').save();
-        const currentOperation = $w('#dynamicDataset').getCurrentItem();
-        let collectionId, newItem;
-        if (type === 'Family') {
-            collectionId = COLLECTIONS.FAMILIES;
-            newItem = { headOfFamily: `New Family - ${Date.now()}` };
-        } else {
-            collectionId = COLLECTIONS.DONORS;
-            newItem = { donorName: `New Donor - ${Date.now()}` };
-        }
-        const newLinkedItem = await wixData.insert(collectionId, newItem);
-        await handleLink(currentOperation._id, newLinkedItem, type);
-    } catch (err) { console.error(`Error creating new ${type}:`, err); }
-}
-
-/**
- * Handles removing a reference from the current Operation.
+ * --- UPDATED: Handles two-way reference removal for Individuals. ---
  */
 async function handleRemoveLink(operationId, itemIdToRemove, type) {
     try {
@@ -160,8 +153,12 @@ async function handleRemoveLink(operationId, itemIdToRemove, type) {
         } else if (type === 'Individual') {
             refField = FIELDS.OP_INDIVIDUAL_REF;
             linkedDataset = $w('#dataset3');
+            // Remove the reverse reference from Individual -> Operation
+            await wixData.removeReference(COLLECTIONS.INDIVIDUALS, FIELDS.OP_INDIVIDUAL_REF_REVERSE, itemIdToRemove, operationId);
         }
+        // Remove the primary reference from Operation -> Other Item
         await wixData.removeReference(COLLECTIONS.OPERATIONS, refField, operationId, itemIdToRemove);
+        
         await linkedDataset.refresh();
         if (type === 'Family') await initialUiSetup();
     } catch (err) { console.error(`Error removing ${type} link:`, err); }
