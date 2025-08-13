@@ -153,7 +153,7 @@ async function handleLink(operationId, selectedItem, type) {
             linkedDataset = $w('#dataset3');
             await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.OP_INDIVIDUAL_REF_REVERSE, selectedItem._id, operationId);
         }
-        await wixData.insertReference(COLLECTIONS.OPERATIONS, refField, operationId, selecteditem._id);
+        await wixData.insertReference(COLLECTIONS.OPERATIONS, refField, operationId, selectedItem._id);
         await linkedDataset.refresh();
         if (type === 'Family') await initialUiSetup();
     } catch (err) { console.error(`Error linking ${type}:`, err); }
