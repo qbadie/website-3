@@ -22,8 +22,9 @@ $w.onReady(function () {
             return;
         }
 
-        // Setup all page components for the current family.
-        setupEventHandlers(currentFamily); // FIX: setupEventHandlers now includes the delete button logic.
+        // FIX: Call both setup functions from the main onReady block.
+        setupEventHandlers();
+        setupFamilyCompositionRepeater(currentFamily);
     });
 
     // Setup the "Add New Member" dataset (#dataset4)
@@ -48,11 +49,10 @@ $w.onReady(function () {
 });
 
 /**
- * Sets up all interactive element event handlers for the page.
- * @param {object} currentFamily - The main family item from the dynamic dataset.
+ * Sets up the event handler for the "Add New Member" button.
  */
-function setupEventHandlers(currentFamily) {
-    // --- ADD NEW MEMBER BUTTON ---
+// FIX: This function now has a clear, single purpose.
+function setupEventHandlers() {
     $w('#addNewMemberButton').onClick(() => {
         if ($w('#memberAgeInput').validity.valid && $w('#memberBoyOrGirlInput').validity.valid && $w('#memberSizeOrExtraInfoInput').validity.valid) {
             $w('#newMemberErrorText').collapse();
@@ -62,27 +62,31 @@ function setupEventHandlers(currentFamily) {
             $w('#newMemberErrorText').expand();
         }
     });
+} // <-- FIX: Added the missing closing brace here.
 
 /**
- * Configures the repeater showing the members of this Family.
+ * Configures the repeater showing the members of this Family, including the delete button.
  * @param {object} currentFamily The family item from the dynamic dataset.
  */
+// FIX: This is now its own separate, top-level function.
 function setupFamilyCompositionRepeater(currentFamily) {
-    // #dataset3 is the dataset for the members repeater
     const familyMembersDataset = $w('#dataset3');
 
     familyMembersDataset.onReady(() => {
-        // This toggles visibility of the container element for the repeater
-        $w('#familyComposition').toggle(familyMembersDataset.getTotalCount() > 0);
+        // Show or hide the repeater's container based on whether there are members.
+        if (familyMembersDataset.getTotalCount() > 0) {
+             $w('#familyComposition').expand();
+        } else {
+             $w('#familyComposition').collapse();
+        }
     });
 
     $w('#familyCompositionRepeater').onItemReady(($item, itemData, index) => {
         // itemData is the Individual item for the current repeater row.
-
         $item('#deleteMemberButton').onClick(async () => {
             console.log(`Attempting to delete individual with ID: ${itemData._id}`);
             
-            // FIX: Use wixData.remove() to permanently delete the item.
+            // Use wixData.remove() to permanently delete the item.
             await wixData.remove(COLLECTIONS.INDIVIDUALS, itemData._id);
             
             // Refresh the repeater to show the updated list.
