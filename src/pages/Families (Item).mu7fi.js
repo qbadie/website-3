@@ -63,20 +63,30 @@ function setupEventHandlers(currentFamily) {
         }
     });
 
-    // --- FIX: ADDED DELETE MEMBER BUTTON LOGIC ---
-    // #familyCompositionRepeater is the repeater showing family members.
-    $w('#familyCompositionRepeater').onItemReady(($item, itemData, index) => {
-        const memberId = itemData._id;
+/**
+ * Configures the repeater showing the members of this Family.
+ * @param {object} currentFamily The family item from the dynamic dataset.
+ */
+function setupFamilyCompositionRepeater(currentFamily) {
+    // #dataset3 is the dataset for the members repeater
+    const familyMembersDataset = $w('#dataset3');
 
-        // Attach a click handler to the delete button within this specific repeater item.
+    familyMembersDataset.onReady(() => {
+        // This toggles visibility of the container element for the repeater
+        $w('#familyComposition').toggle(familyMembersDataset.getTotalCount() > 0);
+    });
+
+    $w('#familyCompositionRepeater').onItemReady(($item, itemData, index) => {
+        // itemData is the Individual item for the current repeater row.
+
         $item('#deleteMemberButton').onClick(async () => {
-            console.log(`Removing member ${memberId} from family ${currentFamily._id}`);
-            // Remove the two-way reference to unlink the member.
-            await wixData.removeReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, currentFamily._id, memberId);
-            await wixData.removeReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, memberId, currentFamily._id);
+            console.log(`Attempting to delete individual with ID: ${itemData._id}`);
             
-            // Refresh the repeater to show the change.
-            await $w('#dataset3').refresh();
+            // FIX: Use wixData.remove() to permanently delete the item.
+            await wixData.remove(COLLECTIONS.INDIVIDUALS, itemData._id);
+            
+            // Refresh the repeater to show the updated list.
+            await familyMembersDataset.refresh();
         });
     });
 }
