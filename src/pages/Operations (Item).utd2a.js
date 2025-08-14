@@ -1,3 +1,4 @@
+// @ts-nocheck
 import wixData from 'wix-data';
 
 // ====================================================================
@@ -48,6 +49,7 @@ $w.onReady(function () {
  * Sets the initial collapsed state of search elements.
  */
 function setInitialUiState() {
+    // @ts-ignore
     $w('#familySearchTable, #input3, #donorSearchTable, #searchInput').collapse();
 }
 
@@ -63,9 +65,11 @@ async function populateMembersTableAndUpdateVisibility() {
             .hasSome(FIELDS.INDIVIDUAL_FAMILY_REF, linkedFamily._id)
             .find();
         $w('#familyMembersDisplayTable').rows = results.items;
+        // @ts-ignore
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').expand();
     } else {
         $w('#familyMembersDisplayTable').rows = [];
+        // @ts-ignore
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').collapse();
     }
 }
@@ -77,10 +81,12 @@ function setupEventHandlers(currentOperation) {
     const operationId = currentOperation._id;
     $w('#AddNewMemberButton').onClick(() => {
         if ($w('#newMemberAgeInput').validity.valid && $w('#newMemberBoyOrGirlInput').validity.valid && $w('#newMemberSizeOrInfoInput').validity.valid) {
+            // @ts-ignore
             $w('#newMemberErrorText').collapse();
             $w('#dataset7').setFieldValue('title', `Member - ${$w('#individualIdInput').value}`);
             $w('#dataset7').save();
         } else {
+            // @ts-ignore
             $w('#newMemberErrorText').text = "All member fields are required.";
             $w('#newMemberErrorText').expand();
         }
