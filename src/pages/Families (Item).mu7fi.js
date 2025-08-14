@@ -3,15 +3,15 @@ import wixData from 'wix-data';
 // ====================================================================
 // --- Configuration ---
 const COLLECTIONS = {
-    OPERATIONS: "Import3", // Added back
+    OPERATIONS: "Import3",
     FAMILIES: "Import4",
-    DONORS: "Import5", // Added back
+    DONORS: "Import5",
     INDIVIDUALS: "Import6"
 };
 
 const FIELDS = {
-    OP_DONOR_REF: "linkedDonor", // Added back
-    OP_INDIVIDUAL_REF: "linkedIndividual", // Added back
+    OP_DONOR_REF: "linkedDonor",
+    OP_INDIVIDUAL_REF: "linkedIndividual",
     FAMILY_MEMBERS_REF: "Import6_import_4_linked_family_members",
     INDIVIDUAL_FAMILY_REF: "import_4_linked_family_members"
 };
@@ -26,10 +26,8 @@ $w.onReady(function () {
             return;
         }
 
-        // Setup all page components for the current family.
+        // Setup all remaining page components.
         setupEventHandlers();
-        setupFamilyCompositionRepeater(currentFamily);
-        // --- ADDED BACK: This function will populate the requests repeater ---
         setupLinkedOperationsRepeater();
     });
 
@@ -51,40 +49,43 @@ $w.onReady(function () {
 });
 
 /**
- * --- NEW: Configures the repeater showing Operations linked to this Family. ---
- * It fetches and displays the correct Donor for each operation.
+ * Configures the repeater showing Operations linked to this Family.
  */
 function setupLinkedOperationsRepeater() {
-    // #dataset1 is the dataset for linked operations
+    // #dataset1 is the dataset for linked operations, connected to #linkedFamilyRepeater
     $w('#linkedFamilyRepeater').onItemReady(async ($item, itemData, index) => {
-        // itemData is an Operation item from the repeater's data.
+        // itemData is an Operation item.
 
         // --- Populate Donor Details ---
         if (itemData[FIELDS.OP_DONOR_REF]) {
             try {
                 const donor = await wixData.get(COLLECTIONS.DONORS, itemData[FIELDS.OP_DONOR_REF]);
                 if (donor) {
-                    $item('#linkedDonorName').text = donor.donorName || "Not Available";
+                    $item('#linkedDonorName').text = donor.donorName || "N/A";
                     $item('#linkedDonorOrg').text = donor.organizationName || "";
-                    $item('#linkedDonorNumber').text = donor.donorPhone || "";
-                    $item('#linkedDonorEmail').text = donor.donorEmail || "";
-                    $item('#linkedDonorStaffNotes').text = donor.staffNotes || "";
                 }
             } catch (e) {
                 console.error("Could not fetch donor details:", e);
-                $item('#linkedDonorName').text = "Error Loading Donor";
+                $item('#linkedDonorName').text = "Error";
             }
         } else {
             $item('#linkedDonorName').text = "No Donor Linked";
-            // Clear other donor fields if none is linked
-            // @ts-ignore
-            $item('#linkedDonorOrg, #linkedDonorNumber, #linkedDonorEmail, #linkedDonorStaffNotes').text = "";
+            $item('#linkedDonorOrg').text = "";
         }
 
         // --- Populate Family/Individual Info ---
-        // On a Family page, the operation is always linked to the Family, not an individual.
-        $item('#linkedFamilyOrIndividual').text = "Family";
-        $item('#linkedIndividualInfo').collapse(); // Hide the individual info string as it's not relevant here.
+        if (itemData[FIELDS.OP_INDIVIDUAL_REF]) {
+             $item('#linkedFamilyOrIndividual').text = "Individual";
+             const individual = await wixData.get(COLLECTIONS.INDIVIDUALS, itemData[FIELDS.OP_INDIVIDUAL_REF]);
+             if(individual) {
+                const sizeInfo = individual.sizeOrInfo ? individual.sizeOrInfo.split(' ').slice(0, 3).join(' ') + '...' : '';
+                $item('#linkedIndividualInfo').text = `${individual.boyOrGirl || ''} ${individual.age || ''} - ${sizeInfo}`;
+                $item('#linkedIndividualInfo').expand();
+             }
+        } else {
+            $item('#linkedFamilyOrIndividual').text = "Family";
+            $item('#linkedIndividualInfo').collapse();
+        }
     });
 }
 
@@ -92,35 +93,14 @@ function setupLinkedOperationsRepeater() {
  * Sets up the event handler for the "Add New Member" button.
  */
 function setupEventHandlers() {
-    $w('#addNewMemberButton').onClick(() => {
-        if ($w('#memberAgeInput').validity.valid && $w('#memberBoyOrGirl').validity.valid && $w('#memberSizeOrExtraInfoInput').validity.valid) {
+    $w('#addMemberButton').onClick(() => {
+        if ($w('#memberAgeInput').validity.valid && $w('#memberBoyOrGirlInput').validity.valid && $w('#memberSizeOrExtraInfoInput').validity.valid) {
             $w('#newMemberErrorText').collapse();
             $w('#dataset4').save();
         } else {
             $w('#newMemberErrorText').text = "All member fields are required.";
             $w('#newMemberErrorText').expand();
         }
-    });
-}
-
-/**
- * Configures the repeater showing the members of this Family, including the delete button.
- */
-function setupFamilyCompositionRepeater(currentFamily) {
-    const familyMembersDataset = $w('#dataset3');
-    familyMembersDataset.onReady(() => {
-        if (familyMembersDataset.getTotalCount() > 0) {
-            $w('#familyComposition').expand();
-        } else {
-            $w('#familyComposition').collapse();
-        }
-    });
-
-    $w('#familyCompositionRepeater').onItemReady(($item, itemData, index) => {
-        $item('#deleteMemberButton').onClick(async () => {
-            await wixData.remove(COLLECTIONS.INDIVIDUALS, itemData._id);
-            await familyMembersDataset.refresh();
-        });
     });
 }
 
