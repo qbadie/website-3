@@ -47,42 +47,50 @@ $w.onReady(function () {
         loadUniqueId();
     });
 });
-
 /**
  * Configures the repeater showing Operations linked to this Family.
  */
 function setupLinkedOperationsRepeater() {
-    // #dataset1 is the dataset for linked operations, connected to #linkedFamilyRepeater
     $w('#linkedFamilyRepeater').onItemReady(async ($item, itemData, index) => {
-        // itemData is an Operation item.
+        // LOG 1: This will show us the entire Operation item for each row.
+        console.log("--- Repeater Row ---", itemData);
 
         // --- Populate Donor Details ---
         if (itemData[FIELDS.OP_DONOR_REF]) {
+            // LOG 2: This confirms that a donor reference was found.
+            console.log("Donor reference found:", itemData[FIELDS.OP_DONOR_REF]);
             try {
                 const donor = await wixData.get(COLLECTIONS.DONORS, itemData[FIELDS.OP_DONOR_REF]);
+                // LOG 3: This shows the donor object that was fetched.
+                console.log("Fetched Donor:", donor);
                 if (donor) {
                     $item('#linkedDonorName').text = donor.donorName || "N/A";
                     $item('#linkedDonorOrg').text = donor.organizationName || "";
                 }
             } catch (e) {
                 console.error("Could not fetch donor details:", e);
-                $item('#linkedDonorName').text = "Error";
             }
         } else {
+            console.log("No donor reference found for this item.");
             $item('#linkedDonorName').text = "No Donor Linked";
             $item('#linkedDonorOrg').text = "";
         }
 
         // --- Populate Family/Individual Info ---
         if (itemData[FIELDS.OP_INDIVIDUAL_REF]) {
+            // LOG 4: This confirms an individual reference was found.
+            console.log("Individual reference found:", itemData[FIELDS.OP_INDIVIDUAL_REF]);
              $item('#linkedFamilyOrIndividual').text = "Individual";
              const individual = await wixData.get(COLLECTIONS.INDIVIDUALS, itemData[FIELDS.OP_INDIVIDUAL_REF]);
+             // LOG 5: This shows the individual object that was fetched.
+             console.log("Fetched Individual:", individual);
              if(individual) {
                 const sizeInfo = individual.sizeOrInfo ? individual.sizeOrInfo.split(' ').slice(0, 3).join(' ') + '...' : '';
                 $item('#linkedIndividualInfo').text = `${individual.boyOrGirl || ''} ${individual.age || ''} - ${sizeInfo}`;
                 $item('#linkedIndividualInfo').expand();
              }
         } else {
+            console.log("No individual reference found, setting type to Family.");
             $item('#linkedFamilyOrIndividual').text = "Family";
             $item('#linkedIndividualInfo').collapse();
         }
