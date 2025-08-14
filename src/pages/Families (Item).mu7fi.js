@@ -1,7 +1,7 @@
 import wixData from 'wix-data';
 
 // ====================================================================
-// --- Configuration based on your provided schemas ---
+// --- Configuration ---
 const COLLECTIONS = {
     OPERATIONS: "Import3",
     FAMILIES: "Import4",
@@ -19,7 +19,6 @@ const FIELDS = {
 // ====================================================================
 
 $w.onReady(function () {
-    // #dynamicDataset is the current Family item
     $w('#dynamicDataset').onReady(() => {
         const currentFamily = $w('#dynamicDataset').getCurrentItem();
         if (!currentFamily) {
@@ -27,39 +26,30 @@ $w.onReady(function () {
             return;
         }
         setupEventHandlers();
-        setupLinkedOperationsRepeater(currentFamily);
+        setupLinkedOperationsRepeater();
     });
 
-    // --- Using the reliable dataset pattern from your Operations page ---
     const newMemberDataset = $w('#dataset4');
+    newMemberDataset.onReady(() => { loadUniqueId(); });
 
-    // This runs just before saving, ensuring the ID is always included.
-    newMemberDataset.onBeforeSave(() => {
-        const uniqueId = generateUniqueId();
-        newMemberDataset.setFieldValues({
-            "individualId": uniqueId
-        });
-    });
-
-    // This runs after a new member is successfully saved.
     newMemberDataset.onAfterSave(async (savedIndividual) => {
-        console.log("New member saved. Now creating links.");
-        // FIX: Get the current family from the page's main dynamic dataset.
         const currentFamily = $w('#dynamicDataset').getCurrentItem();
-
         if (currentFamily && savedIndividual) {
             await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, currentFamily._id, savedIndividual._id);
             await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, savedIndividual._id, currentFamily._id);
         }
         await $w('#dataset3').refresh();
+        loadUniqueId();
     });
 });
 
 /**
- * Manually fetches and displays linked operations with their full details.
- * @param {object} currentFamily The main family item from the page.
+ * Fetches and displays linked operations with their full donor/individual details.
  */
-async function setupLinkedOperationsRepeater(currentFamily) {
+async function setupLinkedOperationsRepeater() {
+    const currentFamily = $w('#dynamicDataset').getCurrentItem();
+    if (!currentFamily) return;
+
     const results = await wixData.query(COLLECTIONS.OPERATIONS)
         .hasSome(FIELDS.OP_FAMILY_REF, currentFamily._id)
         .include(FIELDS.OP_DONOR_REF, FIELDS.OP_INDIVIDUAL_REF)
@@ -67,7 +57,7 @@ async function setupLinkedOperationsRepeater(currentFamily) {
     
     $w('#linkedFamilyRepeater').data = results.items;
 
-    $w('#linkedFamilyRepeater').onItemReady(($item, itemData, index) => {
+    $w('#linkedFamilyRepeater').onItemReady(async ($item, itemData, index) => {
         // --- Populate Donor Details ---
         if (itemData.linkedDonor) {
             $item('#linkedDonorName').text = itemData.linkedDonor.donorName || "N/A";
@@ -81,27 +71,25 @@ async function setupLinkedOperationsRepeater(currentFamily) {
         }
 
         // --- Populate Family/Individual Info ---
-        if (itemData.linkedIndividual) {
-            $item('#linkedFamilyOrIndividual').text = "Individual";
-            const individual = itemData.linkedIndividual;
+        if (itemData.linkedIndividual && itemData.linkedIndividual.length > 0) {
+            $item('#linkedFamilyOrIndividual').text = "Linked to Individual";
+            
+            const individual = itemData.linkedIndividual[0]; 
+            
             const sizeInfo = individual.sizeOrInfo ? individual.sizeOrInfo.split(' ').slice(0, 3).join(' ') + '...' : '';
             $item('#linkedIndividualInfo').text = `${individual.boyOrGirl || ''} ${individual.age || ''} - ${sizeInfo}`;
             $item('#linkedIndividualInfo').expand();
         } else {
-            $item('#linkedFamilyOrIndividual').text = "Family";
+            $item('#linkedFamilyOrIndividual').text = "Linked to Family";
             $item('#linkedIndividualInfo').collapse();
         }
     });
 }
 
-/**
- * Sets up the event handler for the "Add New Member" button.
- */
 function setupEventHandlers() {
-    $w('#addNewMemberButton').onClick(() => {
+    $w('#addMemberButton').onClick(() => {
         if ($w('#memberAgeInput').validity.valid && $w('#memberBoyOrGirlInput').validity.valid && $w('#memberSizeOrExtraInfoInput').validity.valid) {
             $w('#newMemberErrorText').collapse();
-            // This just triggers the save; onBeforeSave and onAfterSave do the work.
             $w('#dataset4').save();
         } else {
             $w('#newMemberErrorText').text = "All member fields are required.";
@@ -110,10 +98,7 @@ function setupEventHandlers() {
     });
 }
 
-/**
- * Generates a unique ID string.
- */
-function generateUniqueId() {
+function loadUniqueId() {
     const now = new Date();
     const pad = (num) => String(num).padStart(2, '0');
     const year = String(now.getFullYear()).slice(-2);
@@ -122,5 +107,8 @@ function generateUniqueId() {
     const hours = pad(now.getHours());
     const minutes = pad(now.getMinutes());
     const seconds = pad(now.getSeconds());
-    return `IND-${year}${month}${day}${hours}${minutes}${seconds}`;
+    const uniqueId = `IND-${year}${month}${day}${hours}${minutes}${seconds}`;
+    
+    $w('#individualIdInput').value = uniqueId;
+    $w('#dataset4').setFieldValue('individualId', uniqueId);
 }
