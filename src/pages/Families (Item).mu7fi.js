@@ -14,41 +14,45 @@ const FIELDS = {
 // ====================================================================
 
 $w.onReady(function () {
-    // Set up the event handler for the "Add New Member" dataset (#dataset4).
-    // This uses the exact same successful pattern as your Operations page.
-    const newMemberDataset = $w('#dataset4');
+    // #dynamicDataset is the current Family item
+    $w('#dynamicDataset').onReady(() => {
+        const currentFamily = $w('#dynamicDataset').getCurrentItem();
+        if (!currentFamily) {
+            console.error("PAGE LOAD FAILED: Could not load the current Family item.");
+            return;
+        }
 
-    // This event runs AFTER a new member is saved via the dataset.
+        // Setup all page components for the current family.
+        setupEventHandlers(currentFamily); // FIX: setupEventHandlers now includes the delete button logic.
+    });
+
+    // Setup the "Add New Member" dataset (#dataset4)
+    const newMemberDataset = $w('#dataset4');
+    
+    newMemberDataset.onReady(() => {
+        loadUniqueId();
+    });
+
     newMemberDataset.onAfterSave(async (savedIndividual) => {
         console.log("New member saved. Now creating two-way reference.");
-
-        // FIX: Get the current family from the page's main dynamic dataset.
         const currentFamily = $w('#dynamicDataset').getCurrentItem();
 
         if (currentFamily && savedIndividual) {
-            // Create the two-way reference link.
             await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, currentFamily._id, savedIndividual._id);
             await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, savedIndividual._id, currentFamily._id);
         }
         
-        // Refresh the members list and prepare the form for the next entry.
         await $w('#dataset3').refresh();
         loadUniqueId();
-    });
-
-    // To prevent errors, only call loadUniqueId when the dataset is ready.
-    newMemberDataset.onReady(() => {
-        loadUniqueId();
-        setupEventHandlers();
     });
 });
 
 /**
  * Sets up all interactive element event handlers for the page.
+ * @param {object} currentFamily - The main family item from the dynamic dataset.
  */
-function setupEventHandlers() {
-    // This button click simply validates the inputs and tells the dataset to save.
-    // The onAfterSave handler does all the real work.
+function setupEventHandlers(currentFamily) {
+    // --- ADD NEW MEMBER BUTTON ---
     $w('#addNewMemberButton').onClick(() => {
         if ($w('#memberAgeInput').validity.valid && $w('#memberBoyOrGirlInput').validity.valid && $w('#memberSizeOrExtraInfoInput').validity.valid) {
             $w('#newMemberErrorText').collapse();
@@ -59,12 +63,26 @@ function setupEventHandlers() {
         }
     });
 
-    // NOTE: Other handlers for deleting members, etc., can be added here as needed.
-    // The focus here is to fix the Add New Member functionality.
+    // --- FIX: ADDED DELETE MEMBER BUTTON LOGIC ---
+    // #familyCompositionRepeater is the repeater showing family members.
+    $w('#familyCompositionRepeater').onItemReady(($item, itemData, index) => {
+        const memberId = itemData._id;
+
+        // Attach a click handler to the delete button within this specific repeater item.
+        $item('#deleteMemberButton').onClick(async () => {
+            console.log(`Removing member ${memberId} from family ${currentFamily._id}`);
+            // Remove the two-way reference to unlink the member.
+            await wixData.removeReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, currentFamily._id, memberId);
+            await wixData.removeReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, memberId, currentFamily._id);
+            
+            // Refresh the repeater to show the change.
+            await $w('#dataset3').refresh();
+        });
+    });
 }
 
 /**
- * Generates and pre-loads a unique ID into the invisible input field and dataset.
+ * Generates and pre-loads a unique ID into the dataset.
  */
 function loadUniqueId() {
     const now = new Date();
@@ -77,8 +95,6 @@ function loadUniqueId() {
     const seconds = pad(now.getSeconds());
     const uniqueId = `IND-${year}${month}${day}${hours}${minutes}${seconds}`;
     
-    // Set the value of the input field.
     $w('#individualIdInput').value = uniqueId;
-    // Set the value in the dataset field directly.
     $w('#dataset4').setFieldValue('individualId', uniqueId);
 }
