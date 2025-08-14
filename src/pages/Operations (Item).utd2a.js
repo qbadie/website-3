@@ -1,4 +1,3 @@
-// @ts-nocheck
 import wixData from 'wix-data';
 
 // ====================================================================
@@ -22,6 +21,7 @@ const FIELDS = {
 
 $w.onReady(function () {
     setInitialUiState();
+
     $w('#dynamicDataset').onReady(() => {
         const currentOperation = $w('#dynamicDataset').getCurrentItem();
         if (!currentOperation) {
@@ -33,6 +33,24 @@ $w.onReady(function () {
             await populateMembersTableAndUpdateVisibility();
         });
     });
+    
+    // --- This is the reliable way to add the ID right before saving ---
+    $w('#dataset7').onBeforeSave(() => {
+        const now = new Date();
+        const pad = (num) => String(num).padStart(2, '0');
+        const year = String(now.getFullYear()).slice(-2);
+        const month = pad(now.getMonth() + 1);
+        const day = pad(now.getDate());
+        const hours = pad(now.getHours());
+        const minutes = pad(now.getMinutes());
+        const seconds = pad(now.getSeconds());
+        const uniqueId = `IND-${year}${month}${day}${hours}${minutes}${seconds}`;
+
+        // Set the ID and Title fields on the item being saved.
+        $w('#dataset7').setFieldValues({
+            "individualId": uniqueId
+        });
+    });
 
     $w('#dataset7').onAfterSave(async (savedIndividual) => {
         const linkedFamily = await $w('#dataset1').getCurrentItem();
@@ -41,7 +59,6 @@ $w.onReady(function () {
             await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, savedIndividual._id, linkedFamily._id);
         }
         await populateMembersTableAndUpdateVisibility();
-        loadUniqueId();
     });
 });
 
@@ -49,7 +66,6 @@ $w.onReady(function () {
  * Sets the initial collapsed state of search elements.
  */
 function setInitialUiState() {
-    // @ts-ignore
     $w('#familySearchTable, #input3, #donorSearchTable, #searchInput').collapse();
 }
 
@@ -65,11 +81,9 @@ async function populateMembersTableAndUpdateVisibility() {
             .hasSome(FIELDS.INDIVIDUAL_FAMILY_REF, linkedFamily._id)
             .find();
         $w('#familyMembersDisplayTable').rows = results.items;
-        // @ts-ignore
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').expand();
     } else {
         $w('#familyMembersDisplayTable').rows = [];
-        // @ts-ignore
         $w('#familyMembersDisplayTable, #linkedMemberRepeater, #box148').collapse();
     }
 }
@@ -79,18 +93,17 @@ async function populateMembersTableAndUpdateVisibility() {
  */
 function setupEventHandlers(currentOperation) {
     const operationId = currentOperation._id;
+
     $w('#AddNewMemberButton').onClick(() => {
         if ($w('#newMemberAgeInput').validity.valid && $w('#newMemberBoyOrGirlInput').validity.valid && $w('#newMemberSizeOrInfoInput').validity.valid) {
-            // @ts-ignore
             $w('#newMemberErrorText').collapse();
-            $w('#dataset7').setFieldValue('title', `Member - ${$w('#individualIdInput').value}`);
             $w('#dataset7').save();
         } else {
-            // @ts-ignore
             $w('#newMemberErrorText').text = "All member fields are required.";
             $w('#newMemberErrorText').expand();
         }
     });
+
     $w('#linkedFamilyRepeater').onItemReady(($item, itemData) => {
         $item('#removeLinkedFamilyButton').onClick(() => handleRemoveLink(operationId, itemData._id, 'Family'));
     });
@@ -109,22 +122,6 @@ function setupEventHandlers(currentOperation) {
     $w('#familyMembersDisplayTable').onRowSelect((event) => handleLink(operationId, event.rowData, 'Individual'));
 }
 
-/**
- * Generates and pre-loads a unique ID into the invisible input field.
- */
-function loadUniqueId() {
-    const now = new Date();
-    const pad = (num) => String(num).padStart(2, '0');
-    const year = String(now.getFullYear()).slice(-2);
-    const month = pad(now.getMonth() + 1);
-    const day = pad(now.getDate());
-    const hours = pad(now.getHours());
-    const minutes = pad(now.getMinutes());
-    const seconds = pad(now.getSeconds());
-    const uniqueId = `IND-${year}${month}${day}${hours}${minutes}${seconds}`;
-    $w('#individualIdInput').value = uniqueId;
-    $w('#dataset7').setFieldValue('individualId', uniqueId);
-}
 
 /**
  * Handles linking an item to the current Operation.
@@ -152,22 +149,18 @@ async function handleLink(operationId, selectedItem, type) {
 }
 
 /**
- * --- UPDATED: Handles removing a reference from the current Operation. ---
+ * Handles removing a reference from the current Operation.
  */
 async function handleRemoveLink(operationId, itemIdToRemove, type) {
     try {
         let refField, linkedDataset;
         if (type === 'Family') {
-            // --- NEW: When removing a family, first find and remove all associated individuals ---
             const { items: individualsToRemove } = await $w('#dataset3').getItems(0, $w('#dataset3').getTotalCount());
             for (const individual of individualsToRemove) {
-                // Reuse this same function to remove each individual link.
                 await handleRemoveLink(operationId, individual._id, 'Individual');
             }
-            // Now, proceed with removing the family itself.
             refField = FIELDS.OP_FAMILY_REF;
             linkedDataset = $w('#dataset1');
-
         } else if (type === 'Donor') {
             refField = FIELDS.OP_DONOR_REF;
             linkedDataset = $w('#dataset5');
