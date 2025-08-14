@@ -3,11 +3,15 @@ import wixData from 'wix-data';
 // ====================================================================
 // --- Configuration ---
 const COLLECTIONS = {
+    OPERATIONS: "Import3", // Added back
     FAMILIES: "Import4",
+    DONORS: "Import5", // Added back
     INDIVIDUALS: "Import6"
 };
 
 const FIELDS = {
+    OP_DONOR_REF: "linkedDonor", // Added back
+    OP_INDIVIDUAL_REF: "linkedIndividual", // Added back
     FAMILY_MEMBERS_REF: "Import6_import_4_linked_family_members",
     INDIVIDUAL_FAMILY_REF: "import_4_linked_family_members"
 };
@@ -22,12 +26,13 @@ $w.onReady(function () {
             return;
         }
 
-        // FIX: Call both setup functions from the main onReady block.
+        // Setup all page components for the current family.
         setupEventHandlers();
         setupFamilyCompositionRepeater(currentFamily);
+        // --- ADDED BACK: This function will populate the requests repeater ---
+        setupLinkedOperationsRepeater();
     });
 
-    // Setup the "Add New Member" dataset (#dataset4)
     const newMemberDataset = $w('#dataset4');
     
     newMemberDataset.onReady(() => {
@@ -35,26 +40,60 @@ $w.onReady(function () {
     });
 
     newMemberDataset.onAfterSave(async (savedIndividual) => {
-        console.log("New member saved. Now creating two-way reference.");
         const currentFamily = $w('#dynamicDataset').getCurrentItem();
-
         if (currentFamily && savedIndividual) {
             await wixData.insertReference(COLLECTIONS.FAMILIES, FIELDS.FAMILY_MEMBERS_REF, currentFamily._id, savedIndividual._id);
             await wixData.insertReference(COLLECTIONS.INDIVIDUALS, FIELDS.INDIVIDUAL_FAMILY_REF, savedIndividual._id, currentFamily._id);
         }
-        
         await $w('#dataset3').refresh();
         loadUniqueId();
     });
 });
 
 /**
+ * --- NEW: Configures the repeater showing Operations linked to this Family. ---
+ * It fetches and displays the correct Donor for each operation.
+ */
+function setupLinkedOperationsRepeater() {
+    // #dataset1 is the dataset for linked operations
+    $w('#linkedFamilyRepeater').onItemReady(async ($item, itemData, index) => {
+        // itemData is an Operation item from the repeater's data.
+
+        // --- Populate Donor Details ---
+        if (itemData[FIELDS.OP_DONOR_REF]) {
+            try {
+                const donor = await wixData.get(COLLECTIONS.DONORS, itemData[FIELDS.OP_DONOR_REF]);
+                if (donor) {
+                    $item('#linkedDonorName').text = donor.donorName || "Not Available";
+                    $item('#linkedDonorOrg').text = donor.organizationName || "";
+                    $item('#linkedDonorNumber').text = donor.donorPhone || "";
+                    $item('#linkedDonorEmail').text = donor.donorEmail || "";
+                    $item('#linkedDonorStaffNotes').text = donor.staffNotes || "";
+                }
+            } catch (e) {
+                console.error("Could not fetch donor details:", e);
+                $item('#linkedDonorName').text = "Error Loading Donor";
+            }
+        } else {
+            $item('#linkedDonorName').text = "No Donor Linked";
+            // Clear other donor fields if none is linked
+            // @ts-ignore
+            $item('#linkedDonorOrg, #linkedDonorNumber, #linkedDonorEmail, #linkedDonorStaffNotes').text = "";
+        }
+
+        // --- Populate Family/Individual Info ---
+        // On a Family page, the operation is always linked to the Family, not an individual.
+        $item('#linkedFamilyOrIndividual').text = "Family";
+        $item('#linkedIndividualInfo').collapse(); // Hide the individual info string as it's not relevant here.
+    });
+}
+
+/**
  * Sets up the event handler for the "Add New Member" button.
  */
-// FIX: This function now has a clear, single purpose.
 function setupEventHandlers() {
     $w('#addNewMemberButton').onClick(() => {
-        if ($w('#memberAgeInput').validity.valid && $w('#memberBoyOrGirlInput').validity.valid && $w('#memberSizeOrExtraInfoInput').validity.valid) {
+        if ($w('#memberAgeInput').validity.valid && $w('#memberBoyOrGirl').validity.valid && $w('#memberSizeOrExtraInfoInput').validity.valid) {
             $w('#newMemberErrorText').collapse();
             $w('#dataset4').save();
         } else {
@@ -62,34 +101,24 @@ function setupEventHandlers() {
             $w('#newMemberErrorText').expand();
         }
     });
-} // <-- FIX: Added the missing closing brace here.
+}
 
 /**
  * Configures the repeater showing the members of this Family, including the delete button.
- * @param {object} currentFamily The family item from the dynamic dataset.
  */
-// FIX: This is now its own separate, top-level function.
 function setupFamilyCompositionRepeater(currentFamily) {
     const familyMembersDataset = $w('#dataset3');
-
     familyMembersDataset.onReady(() => {
-        // Show or hide the repeater's container based on whether there are members.
         if (familyMembersDataset.getTotalCount() > 0) {
-             $w('#familyComposition').expand();
+            $w('#familyComposition').expand();
         } else {
-             $w('#familyComposition').collapse();
+            $w('#familyComposition').collapse();
         }
     });
 
     $w('#familyCompositionRepeater').onItemReady(($item, itemData, index) => {
-        // itemData is the Individual item for the current repeater row.
         $item('#deleteMemberButton').onClick(async () => {
-            console.log(`Attempting to delete individual with ID: ${itemData._id}`);
-            
-            // Use wixData.remove() to permanently delete the item.
             await wixData.remove(COLLECTIONS.INDIVIDUALS, itemData._id);
-            
-            // Refresh the repeater to show the updated list.
             await familyMembersDataset.refresh();
         });
     });
