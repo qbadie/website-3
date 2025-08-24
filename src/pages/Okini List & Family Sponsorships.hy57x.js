@@ -33,11 +33,6 @@ function initializeSession() {
     checkoutSessionId = sessionId;
 }
 
-
-// ====================================================================
-// --- Feature 1: Main Requests Repeater (#repeater1) ---
-// ====================================================================
-
 function setupRequestsRepeater() {
     const liveRequestsDataset = $w('#dataset1');
     liveRequestsDataset.include("linkedIndividual");
@@ -50,8 +45,9 @@ function setupRequestsRepeater() {
             $item('#text138').text = "For Family";
         }
 
-        // FIX: More robust check for any "truthy" urgent status.
-        $item('#box172').toggle(!!itemData.urgentNeedStatus);
+        // FIX: Explicitly check for boolean true or the string "TRUE".
+        const isUrgent = itemData.urgentNeedStatus === true || String(itemData.urgentNeedStatus).toUpperCase() === 'TRUE';
+        $item('#box172').toggle(isUrgent);
 
         $item('#switch1').checked = (itemData.checkoutSessionId === checkoutSessionId);
         $item('#switch1').onChange(async (event) => {
@@ -61,11 +57,6 @@ function setupRequestsRepeater() {
         });
     });
 }
-
-
-// ====================================================================
-// --- Feature 2 & 3: Selected Requests & Multiuser Safety ---
-// ====================================================================
 
 function setupSelectedRequestsRepeater() {
     const selectedRequestsDataset = $w('#dataset4');
@@ -79,11 +70,6 @@ function setupSelectedRequestsRepeater() {
         });
     });
 }
-
-
-// ====================================================================
-// --- Feature 4: Captcha and Final Checkout ---
-// ====================================================================
 
 function setupCheckoutForm() {
     const submitButton = $w('#button20');
@@ -103,7 +89,7 @@ function setupCheckoutForm() {
                 donorEmail: $w('#input1').value,
                 phone: $w('#input2').value,
                 donorMessage: $w('#textBox1').value,
-                organizationName: $w('#input4').value, // Corrected from 'org'
+                organizationName: $w('#input4').value,
                 prefferedFulfillment: $w('#checkboxGroup1').value,
                 donorId: `DON-${Date.now()}`
             };
@@ -121,9 +107,6 @@ function setupCheckoutForm() {
             }
 
             submitButton.label = "Success!";
-            // Optional: Navigate to a "Thank You" page.
-            // import wixLocation from 'wix-location';
-            // wixLocation.to("/thank-you-page-url");
 
         } catch (err) {
             console.error("Checkout failed:", err);
