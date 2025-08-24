@@ -61,9 +61,9 @@ function setupRequestsRepeater() {
         // FIX: Using .expand() and .collapse() instead of .toggle().
         const isUrgent = itemData.urgentNeedStatus === true || String(itemData.urgentNeedStatus).toUpperCase() === 'TRUE';
         if (isUrgent) {
-            $item('#box172').expand();
+            $item('#box172').show();
         } else {
-            $item('#box172').collapse();
+            $item('#box172').hide();
         }
 
         // --- Logic for the "Select Request" switch (#switch1) ---
