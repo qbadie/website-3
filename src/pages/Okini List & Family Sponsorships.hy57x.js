@@ -5,7 +5,8 @@ import { session } from 'wix-storage';
 // --- Configuration ---
 const COLLECTIONS = {
     OPERATIONS: "Import3",
-    DONORS: "Import5"
+    DONORS: "Import5",
+    INDIVIDUALS: "Import6"
 };
 
 const FIELDS = {
@@ -33,22 +34,39 @@ function initializeSession() {
     checkoutSessionId = sessionId;
 }
 
-function setupRequestsRepeater() {
-    const liveRequestsDataset = $w('#dataset1');
-    liveRequestsDataset.include("linkedIndividual");
+// ====================================================================
+// --- Feature 1: Main Requests Repeater (#repeater1) ---
+// ====================================================================
 
-    $w('#repeater1').onItemReady(($item, itemData, index) => {
-        if (itemData.linkedIndividual && itemData.linkedIndividual.length > 0) {
-            const individual = itemData.linkedIndividual[0];
-            $item('#text138').text = `For ${individual.boyOrGirl}, Age: ${individual.age}`;
+function setupRequestsRepeater() {
+    $w('#repeater1').onItemReady(async ($item, itemData, index) => {
+        // --- Logic for "For Who?" text (#text138) ---
+        // FIX: We must manually fetch the individual's data since .include() cannot be used here.
+        if (itemData.linkedIndividual) {
+            try {
+                // Get the ID from the reference field. It might be an array, so we take the first.
+                const individualId = Array.isArray(itemData.linkedIndividual) ? itemData.linkedIndividual[0]._id : itemData.linkedIndividual._id;
+                const individual = await wixData.get(COLLECTIONS.INDIVIDUALS, individualId);
+                if (individual) {
+                    $item('#text138').text = `For ${individual.boyOrGirl}, Age: ${individual.age}`;
+                }
+            } catch(e) {
+                 $item('#text138').text = "For Family";
+            }
         } else {
             $item('#text138').text = "For Family";
         }
 
-        // FIX: Explicitly check for boolean true or the string "TRUE".
+        // --- Logic for "Urgent Need" box (#box172) ---
+        // FIX: Using .expand() and .collapse() instead of .toggle().
         const isUrgent = itemData.urgentNeedStatus === true || String(itemData.urgentNeedStatus).toUpperCase() === 'TRUE';
-        $item('#box172').toggle(isUrgent);
+        if (isUrgent) {
+            $item('#box172').expand();
+        } else {
+            $item('#box172').collapse();
+        }
 
+        // --- Logic for the "Select Request" switch (#switch1) ---
         $item('#switch1').checked = (itemData.checkoutSessionId === checkoutSessionId);
         $item('#switch1').onChange(async (event) => {
             const newSessionId = event.target.checked ? checkoutSessionId : null;
@@ -57,6 +75,10 @@ function setupRequestsRepeater() {
         });
     });
 }
+
+// ====================================================================
+// --- Feature 2 & 3: Selected Requests & Multiuser Safety ---
+// ====================================================================
 
 function setupSelectedRequestsRepeater() {
     const selectedRequestsDataset = $w('#dataset4');
@@ -71,47 +93,49 @@ function setupSelectedRequestsRepeater() {
     });
 }
 
+// ====================================================================
+// --- Feature 4: Captcha and Final Checkout ---
+// ====================================================================
+
 function setupCheckoutForm() {
-    const submitButton = $w('#button20');
-    // ACTION: Ensure this button is "Disabled on load" in the Editor.
+    const submitButton = $w('#button20'); // <-- Use your actual submit button ID
+    const newDonorDataset = $w('#dataset3');
+    
+    // ACTION: In the Editor, select your submit button and check "Disabled on load".
     
     $w('#captcha1').onVerified(() => {
         submitButton.enable();
     });
 
-    submitButton.onClick(async () => {
+    // When a new donor is successfully created...
+    newDonorDataset.onAfterSave(async (newDonor) => {
+        // ...link all the selected operations to them.
+        const selectedOps = await wixData.query(COLLECTIONS.OPERATIONS)
+            .eq("checkoutSessionId", checkoutSessionId)
+            .find();
+
+        for (const operation of selectedOps.items) {
+            await wixData.insertReference(COLLECTIONS.DONORS, FIELDS.DONOR_OPS_REF, newDonor._id, operation._id);
+            await wixData.insertReference(COLLECTIONS.OPERATIONS, FIELDS.OP_DONOR_REF, operation._id, newDonor._id);
+            await wixData.save(COLLECTIONS.OPERATIONS, { ...operation, checkoutSessionId: null });
+        }
+        
+        submitButton.label = "Success!";
+        // Optional: Navigate to a "Thank You" page here.
+    });
+
+    newDonorDataset.onError(() => {
+        submitButton.label = "Error - Please Try Again";
+        submitButton.enable();
+    });
+
+    // The submit button now just saves the new donor dataset.
+    submitButton.onClick(() => {
         submitButton.disable();
         submitButton.label = "Processing...";
-
-        try {
-            const newDonorData = {
-                donorName: $w('#input3').value,
-                donorEmail: $w('#input1').value,
-                phone: $w('#input2').value,
-                donorMessage: $w('#textBox1').value,
-                organizationName: $w('#input4').value,
-                prefferedFulfillment: $w('#checkboxGroup1').value,
-                donorId: `DON-${Date.now()}`
-            };
-
-            const newDonor = await wixData.insert(COLLECTIONS.DONORS, newDonorData);
-            const selectedOps = await wixData.query(COLLECTIONS.OPERATIONS)
-                .eq("checkoutSessionId", checkoutSessionId)
-                .find();
-
-            for (const operation of selectedOps.items) {
-                await wixData.insertReference(COLLECTIONS.DONORS, FIELDS.DONOR_OPS_REF, newDonor._id, operation._id);
-                await wixData.insertReference(COLLECTIONS.OPERATIONS, FIELDS.OP_DONOR_REF, operation._id, newDonor._id);
-                
-                await wixData.save(COLLECTIONS.OPERATIONS, { ...operation, checkoutSessionId: null });
-            }
-
-            submitButton.label = "Success!";
-
-        } catch (err) {
-            console.error("Checkout failed:", err);
-            submitButton.label = "Error - Please Try Again";
-            submitButton.enable();
-        }
+        newDonorDataset.setFieldValues({
+            donorId: `DON-${Date.now()}`
+        });
+        newDonorDataset.save();
     });
 }
