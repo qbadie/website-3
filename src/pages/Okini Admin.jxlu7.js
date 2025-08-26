@@ -1,10 +1,38 @@
-// API Reference: https://www.wix.com/velo/reference/api-overview/introduction
-// “Hello, World!” Example: https://learn-code.wix.com/en/article/hello-world
+import wixData from 'wix-data';
+
+// ====================================================================
+// --- Configuration ---
+const DONORS_COLLECTION_ID = "Import5"; 
+const APPROVAL_FIELD_KEY = "approvedDonor";
+// ====================================================================
+
 
 $w.onReady(function () {
-    // Write your JavaScript here
-
-    // To select an element by ID use: $w('#elementID')
-
-    // Click 'Preview' to run your code
+    updateNewDonorCount();
 });
+
+
+/**
+ * Queries the Donors collection to count unapproved items and updates the text element.
+ */
+async function updateNewDonorCount() {
+    // FIX: Using the correct text element ID #text127.
+    const countElement = $w('#text127'); 
+
+    try {
+        const count = await wixData.query(DONORS_COLLECTION_ID)
+            .ne(APPROVAL_FIELD_KEY, true)
+            .count();
+
+        // FIX: Add logic to handle the grammar for a single donor.
+        if (count === 1) {
+            countElement.text = "There is 1 donor pending approval";
+        } else {
+            countElement.text = `There are ${count} donors pending approval`;
+        }
+
+    } catch (error) {
+        console.error("Failed to count new donors:", error);
+        countElement.text = "Error loading donor count.";
+    }
+}
