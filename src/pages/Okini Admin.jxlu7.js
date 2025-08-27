@@ -38,7 +38,7 @@ function setupRequestsRepeater() {
             progressBar.value = currentStatus.value;
             
             // 2. Set the text of your new text element.
-            statusText.text = `${status} - ${currentStatus.value}%`;
+            statusText.text = `${status}`;
         }
     });
 }
