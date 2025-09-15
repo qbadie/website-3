@@ -5,13 +5,14 @@ import { session } from 'wix-storage';
 // --- Configuration ---
 const COLLECTIONS = {
     OPERATIONS: "Import3",
-    DONORS: "Import5",
+    FAMILIES: "Import4",
     INDIVIDUALS: "Import6"
 };
 
 const FIELDS = {
-    OP_DONOR_REF: "linkedDonor",
-    DONOR_OPS_REF: "Import3_linkedDonor"
+    OP_FAMILY_REF: "linkedFamily",
+    OP_INDIVIDUAL_REF: "linkedIndividual",
+    INDIVIDUAL_FAMILY_REF: "import_4_linked_family_members"
 };
 
 let checkoutSessionId;
@@ -20,7 +21,7 @@ let checkoutSessionId;
 
 $w.onReady(function () {
     initializeSession();
-    setupRequestsRepeater();
+    populateFamilyAndIndividualList();
     setupSelectedRequestsRepeater();
     setupCheckoutForm();
 });
@@ -34,52 +35,107 @@ function initializeSession() {
     checkoutSessionId = sessionId;
 }
 
-// ====================================================================
-// --- Feature 1: Main Requests Repeater (#repeater1) ---
-// ====================================================================
+/**
+ * Creates a "flat" list and populates the repeater with formatted text.
+ */
+async function populateFamilyAndIndividualList() {
+    const flatList = [];
+    const familiesResult = await $w('#dataset1').getItems(0, $w('#dataset1').getTotalCount());
 
-function setupRequestsRepeater() {
-    $w('#repeater1').onItemReady(async ($item, itemData, index) => {
-        // --- Logic for "For Who?" text (#text138) ---
-        // FIX: We must manually fetch the individual's data since .include() cannot be used here.
-        if (itemData.linkedIndividual) {
-            try {
-                // Get the ID from the reference field. It might be an array, so we take the first.
-                const individualId = Array.isArray(itemData.linkedIndividual) ? itemData.linkedIndividual[0]._id : itemData.linkedIndividual._id;
-                const individual = await wixData.get(COLLECTIONS.INDIVIDUALS, individualId);
-                if (individual) {
-                    $item('#text138').text = `For ${individual.boyOrGirl}, Age: ${individual.age}`;
-                }
-            } catch(e) {
-                 $item('#text138').text = "For Family";
+    for (const family of familiesResult.items) {
+        // Add a "header" item for the family itself.
+        flatList.push({ _id: family._id, type: 'family', data: family });
+
+        // Find "family-level" requests.
+        const familyRequests = await wixData.query(COLLECTIONS.OPERATIONS)
+            .eq(FIELDS.OP_FAMILY_REF, family._id)
+            .isEmpty(FIELDS.OP_INDIVIDUAL_REF)
+            .find();
+
+        if (familyRequests.items.length > 0) {
+            flatList.push({ _id: familyRequests.items[0]._id, type: 'family-request', data: familyRequests.items[0] });
+        }
+        
+        // Find all individuals for this family.
+        const individuals = await wixData.query(COLLECTIONS.INDIVIDUALS)
+            .hasSome(FIELDS.INDIVIDUAL_FAMILY_REF, family._id)
+            .find();
+        
+        for (const individual of individuals.items) {
+             const individualRequest = await wixData.query(COLLECTIONS.OPERATIONS)
+                .hasSome(FIELDS.OP_INDIVIDUAL_REF, individual._id)
+                .find();
+
+            if (individualRequest.items.length > 0) {
+                 flatList.push({
+                    _id: individual._id,
+                    type: 'individual',
+                    data: { individual, request: individualRequest.items[0] }
+                });
             }
-        } else {
-            $item('#text138').text = "For Family";
         }
+    }
 
+    const repeater = $w('#repeater1');
+    repeater.data = flatList;
+
+    repeater.onItemReady(($item, item, index) => {
+        const textElement = $item('#requestInfoText');
+        let htmlString = ""; // Start with an empty string
+
+        // Build the HTML string based on the item type.
+        switch (item.type) {
+            case 'family':
+                htmlString = `
+                    <p style="font-size:18px; font-weight:bold;">${item.data.headOfFamily}</p>
+                    <p><strong>About Family:</strong> ${item.data.familyDescription || 'N/A'}</p>
+                `;
+                // Hide the switch for family headers
+                $item('#switch1').collapse(); 
+                break;
+            
+            case 'individual':
+                const { individual, request } = item.data;
+                htmlString = `
+                    <p><strong>For Who:</strong> ${individual.boyOrGirl || ''}, Age: ${individual.age || ''}</p>
+                    <p><strong>Needs:</strong> ${request.requestDonationDetails || 'N/A'}</p>
+                    <p><strong>Sizes:</strong> ${request.sizeDetails || 'N/A'}</p>
+                `;
+                // Show and configure the switch for individuals
+                $item('#switch1').expand();
+                $item('#switch1').checked = (request.checkoutSessionId === checkoutSessionId);
+                $item('#switch1').onChange(async (event) => {
+                    const newSessionId = event.target.checked ? checkoutSessionId : null;
+                    await wixData.save(COLLECTIONS.OPERATIONS, { ...request, checkoutSessionId: newSessionId });
+                    $w('#dataset4').refresh();
+                });
+                break;
+            
+            // This case handles family-wide requests that are not for a specific person.
+            case 'family-request':
+                 htmlString = `<p><strong>Family Need:</strong> ${item.data.requestDonationDetails || 'N/A'}</p>`;
+                 // Also show a switch for family-level requests
+                 $item('#switch1').expand();
+                 $item('#switch1').checked = (item.data.checkoutSessionId === checkoutSessionId);
+                 $item('#switch1').onChange(async (event) => {
+                     const newSessionId = event.target.checked ? checkoutSessionId : null;
+                     await wixData.save(COLLECTIONS.OPERATIONS, { ...item.data, checkoutSessionId: newSessionId });
+                     $w('#dataset4').refresh();
+                 });
+                 break;
+        }
+        
         // --- Logic for "Urgent Need" box (#box172) ---
-        // FIX: Using .expand() and .collapse() instead of .toggle().
-        const isUrgent = itemData.urgentNeedStatus === true || String(itemData.urgentNeedStatus).toUpperCase() === 'TRUE';
-        if (isUrgent) {
-            $item('#box172').show();
-        } else {
-            $item('#box172').hide();
-        }
+        const requestData = item.data.request || item.data;
+        const isUrgent = requestData.urgentNeedStatus === true || String(requestData.urgentNeedStatus).toUpperCase() === 'TRUE';
+        $item('#box172').toggle(isUrgent);
 
-        // --- Logic for the "Select Request" switch (#switch1) ---
-        $item('#switch1').checked = (itemData.checkoutSessionId === checkoutSessionId);
-        $item('#switch1').onChange(async (event) => {
-            const newSessionId = event.target.checked ? checkoutSessionId : null;
-            await wixData.save(COLLECTIONS.OPERATIONS, { ...itemData, checkoutSessionId: newSessionId });
-            $w('#dataset4').refresh();
-        });
+        textElement.html = htmlString;
     });
 }
 
-// ====================================================================
-// --- Feature 2 & 3: Selected Requests & Multiuser Safety ---
-// ====================================================================
 
+// These functions remain the same.
 function setupSelectedRequestsRepeater() {
     const selectedRequestsDataset = $w('#dataset4');
     selectedRequestsDataset.setFilter(wixData.filter().eq("checkoutSessionId", checkoutSessionId));
@@ -87,41 +143,32 @@ function setupSelectedRequestsRepeater() {
     $w('#repeater2').onItemReady(($item, itemData, index) => {
         $item('#button19').onClick(async () => {
             await wixData.save(COLLECTIONS.OPERATIONS, { ...itemData, checkoutSessionId: null });
-            await $w('#dataset1').refresh();
+            await populateFamilyAndIndividualList();
             await $w('#dataset4').refresh();
         });
     });
 }
 
-// ====================================================================
-// --- Feature 4: Captcha and Final Checkout ---
-// ====================================================================
-
 function setupCheckoutForm() {
-    const submitButton = $w('#button20'); // <-- Use your actual submit button ID
+    const submitButton = $w('#button20');
     const newDonorDataset = $w('#dataset3');
-    
-    // ACTION: In the Editor, select your submit button and check "Disabled on load".
     
     $w('#captcha1').onVerified(() => {
         submitButton.enable();
     });
 
-    // When a new donor is successfully created...
     newDonorDataset.onAfterSave(async (newDonor) => {
-        // ...link all the selected operations to them.
         const selectedOps = await wixData.query(COLLECTIONS.OPERATIONS)
             .eq("checkoutSessionId", checkoutSessionId)
             .find();
 
         for (const operation of selectedOps.items) {
-            await wixData.insertReference(COLLECTIONS.DONORS, FIELDS.DONOR_OPS_REF, newDonor._id, operation._id);
-            await wixData.insertReference(COLLECTIONS.OPERATIONS, FIELDS.OP_DONOR_REF, operation._id, newDonor._id);
+            await wixData.insertReference(COLLECTIONS.DONORS, "Import3_linkedDonor", newDonor._id, operation._id);
+            await wixData.insertReference(COLLECTIONS.OPERATIONS, "linkedDonor", operation._id, newDonor._id);
             await wixData.save(COLLECTIONS.OPERATIONS, { ...operation, checkoutSessionId: null });
         }
         
         submitButton.label = "Success!";
-        // Optional: Navigate to a "Thank You" page here.
     });
 
     newDonorDataset.onError(() => {
@@ -129,7 +176,6 @@ function setupCheckoutForm() {
         submitButton.enable();
     });
 
-    // The submit button now just saves the new donor dataset.
     submitButton.onClick(() => {
         submitButton.disable();
         submitButton.label = "Processing...";
