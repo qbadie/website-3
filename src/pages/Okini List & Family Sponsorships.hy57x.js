@@ -25,6 +25,7 @@ let checkoutSessionId;
 $w.onReady(function () {
     initializeSession();
     
+    // This ensures the main function runs only after the Families dataset is ready.
     $w('#dataset2').onReady(() => {
         populateFamilyAndIndividualList();
     });
@@ -43,8 +44,8 @@ function initializeSession() {
 }
 
 /**
- * Creates a "flat" list of families and their individual members,
- * then populates the main repeater with this list using formatted HTML.
+ * DEFENSIVE VERSION: Creates a "flat" list and populates the repeater,
+ * with robust checks to prevent crashes from inconsistent data.
  */
 async function populateFamilyAndIndividualList() {
     const flatList = [];
@@ -56,23 +57,24 @@ async function populateFamilyAndIndividualList() {
     const familiesResult = await $w('#dataset2').getItems(0, familyCount);
 
     for (const family of familiesResult.items) {
-        const familyRequests = await wixData.query(COLLECTIONS.OPERATIONS)
+        const familyRequestsQuery = await wixData.query(COLLECTIONS.OPERATIONS)
             .hasSome(FIELDS.OP_FAMILY_REF, family._id)
             .isEmpty(FIELDS.OP_INDIVIDUAL_REF)
             .find();
         
-        const individuals = await wixData.query(COLLECTIONS.INDIVIDUALS)
+        const individualsQuery = await wixData.query(COLLECTIONS.INDIVIDUALS)
             .hasSome(FIELDS.INDIVIDUAL_FAMILY_REF, family._id)
             .find();
 
-        let hasAnyRequests = familyRequests.items.length > 0;
+        let hasAnyRequests = familyRequestsQuery.items.length > 0;
         const individualItems = [];
 
-        for (const individual of individuals.items) {
+        for (const individual of individualsQuery.items) {
              const individualRequestQuery = await wixData.query(COLLECTIONS.OPERATIONS)
                 .hasSome(FIELDS.OP_INDIVIDUAL_REF, individual._id)
                 .find();
 
+            // Only add the individual if they have a linked request.
             if (individualRequestQuery.items.length > 0) {
                  hasAnyRequests = true;
                  individualItems.push({
@@ -84,18 +86,7 @@ async function populateFamilyAndIndividualList() {
         }
 
         if (hasAnyRequests) {
-            // FIX: Create a single 'family' item that INCLUDES the family-level request data.
-            flatList.push({
-                _id: family._id,
-                type: 'family',
-                data: {
-                    familyDetails: family,
-                    familyRequest: familyRequests.items.length > 0 ? familyRequests.items[0] : null
-                }
-            });
-            
-            // REMOVED: No longer creating a separate 'family-request' item.
-            
+            flatList.push({ _id: family._id, type: 'family', data: { familyDetails: family, familyRequest: familyRequestsQuery.items[0] } });
             flatList.push(...individualItems);
         }
     }
@@ -109,19 +100,16 @@ async function populateFamilyAndIndividualList() {
 
         switch (item.type) {
             case 'family':
-                // FIX: This case now handles both the family info and the family request.
                 const { familyDetails, familyRequest } = item.data;
                 htmlString = `
                     <p style="font-size:18px; font-weight:bold;">${familyDetails.headOfFamily}</p>
                     <p><strong>About:</strong> ${familyDetails.familyDescription || 'N/A'}</p>
                 `;
-
-                // If a family-level request exists, add it to the text and configure its switch.
+                // If a family-level request exists, add it and configure its controls.
                 if (familyRequest) {
                     htmlString += `<p style="margin-left: 20px;"><strong>Family Need:</strong> ${familyRequest.requestDonationDetails || 'N/A'}</p>`;
                     configureSwitchAndUrgentBox($item, familyRequest);
                 } else {
-                    // Otherwise, hide the switch and box for the family header.
                     $item('#switch1').collapse(); 
                     $item('#box172').collapse();
                 }
@@ -138,8 +126,6 @@ async function populateFamilyAndIndividualList() {
                 `;
                 configureSwitchAndUrgentBox($item, request);
                 break;
-            
-            // REMOVED: The 'family-request' case is no longer needed.
         }
         
         textElement.html = htmlString;
