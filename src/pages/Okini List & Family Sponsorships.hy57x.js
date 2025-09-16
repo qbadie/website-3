@@ -173,9 +173,19 @@ async function populateSelectedRequestsRepeater() {
 function setupCheckoutForm() {
     const submitButton = $w('#button20');
     const captcha = $w('#captcha1');
+
+    console.log('Setting up checkout form.');
+    submitButton.disable();
     
-    submitButton.disable(); 
-    captcha.onVerified(() => submitButton.enable());
+    captcha.onVerified(() => {
+        console.log('Captcha verified, enabling submit button.');
+        submitButton.enable();
+    });
+
+    captcha.onError(() => {
+        console.log('Captcha error.');
+        submitButton.disable();
+    });
 
     submitButton.onClick(async () => {
         submitButton.disable();
