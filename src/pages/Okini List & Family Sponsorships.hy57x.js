@@ -23,19 +23,16 @@ let checkoutSessionId;
 
 
 $w.onReady(function () {
-    // This single function now controls the entire page.
-    initializePage();
-});
-
-/**
- * Initializes the session, fetches all data, and sets up all page events.
- */
-async function initializePage() {
     initializeSession();
-    await populateFamilyAndIndividualList();
-    await populateSelectedRequestsRepeater();
+    
+    // This ensures we don't run the main function until the Families dataset is ready.
+    $w('#dataset2').onReady(() => {
+        populateFamilyAndIndividualList();
+    });
+    
+    setupSelectedRequestsRepeater();
     setupCheckoutForm();
-}
+});
 
 function initializeSession() {
     let sessionId = session.getItem("checkoutSessionId");
@@ -44,25 +41,20 @@ function initializeSession() {
         session.setItem("checkoutSessionId", sessionId);
     }
     checkoutSessionId = sessionId;
-    console.log(`User's Checkout Session ID: ${checkoutSessionId}`);
 }
-
 
 /**
  * Creates a "flat" list of families and their individual members,
  * then populates the main repeater with this list using formatted HTML.
  */
 async function populateFamilyAndIndividualList() {
-    console.log("Starting to build the request list...");
     const flatList = [];
-    
-    const familiesResult = await wixData.query(COLLECTIONS.FAMILIES).find();
-    if (familiesResult.items.length === 0) {
-        console.log("No families found in the collection.");
+    const familyCount = $w('#dataset2').getTotalCount();
+    if (familyCount === 0) {
         $w('#repeater1').data = [];
         return;
     }
-    console.log(`Found ${familiesResult.items.length} families to process.`);
+    const familiesResult = await $w('#dataset2').getItems(0, familyCount);
 
     for (const family of familiesResult.items) {
         const familyRequests = await wixData.query(COLLECTIONS.OPERATIONS)
@@ -105,7 +97,6 @@ async function populateFamilyAndIndividualList() {
         }
     }
 
-    console.log(`Populating main repeater (#repeater1) with ${flatList.length} total items.`);
     const repeater = $w('#repeater1');
     repeater.data = flatList;
 
@@ -116,7 +107,6 @@ async function populateFamilyAndIndividualList() {
         switch (item.type) {
             case 'family':
                 const { familyDetails, familyRequest } = item.data;
-                // FIX: Updated the HTML string for better formatting.
                 htmlString = `
                     <p style="font-size:18px;"><strong>${familyDetails.headOfFamily}'s Family</strong></p>
                     <p><strong>About:</strong> ${familyDetails.familyDescription || 'N/A'}</p>
@@ -131,7 +121,6 @@ async function populateFamilyAndIndividualList() {
                 break;
             case 'individual':
                 const { individual, request } = item.data;
-                // This part correctly offsets the family members.
                 htmlString = `<p style="margin-left: 20px;"><strong>${individual.boyOrGirl || 'Member'}, Age: ${individual.age || ''}</strong><br><strong>Needs:</strong> ${request.requestDonationDetails || 'N/A'}<br><strong>Sizes:</strong> ${request.sizeDetails || 'N/A'}</p>`;
                 configureSwitchAndUrgentBox($item, request);
                 break;
@@ -152,63 +141,56 @@ function configureSwitchAndUrgentBox($item, requestData) {
     switchElement.onChange(async () => {
         const newSessionId = switchElement.checked ? checkoutSessionId : null;
         await wixData.save(COLLECTIONS.OPERATIONS, { ...requestData, checkoutSessionId: newSessionId });
-        await populateSelectedRequestsRepeater();
+        $w('#dataset4').refresh();
     });
 }
 
-async function populateSelectedRequestsRepeater() {
-    const selectedOps = await wixData.query(COLLECTIONS.OPERATIONS)
-        .eq("checkoutSessionId", checkoutSessionId)
-        .find();
-
-    $w('#repeater2').data = selectedOps.items;
+function setupSelectedRequestsRepeater() {
+    const selectedRequestsDataset = $w('#dataset4');
+    selectedRequestsDataset.setFilter(wixData.filter().eq("checkoutSessionId", checkoutSessionId));
 
     $w('#repeater2').onItemReady(($item, itemData, index) => {
         $item('#button19').onClick(async () => {
             await wixData.save(COLLECTIONS.OPERATIONS, { ...itemData, checkoutSessionId: null });
             await populateFamilyAndIndividualList();
-            await populateSelectedRequestsRepeater();
+            await $w('#dataset4').refresh();
         });
     });
 }
 
 function setupCheckoutForm() {
     const submitButton = $w('#button20');
-    const captcha = $w('#captcha1');
+    const newDonorDataset = $w('#dataset3');
     
+    // FIX: Explicitly disable the button when the form is set up.
     submitButton.disable(); 
-    captcha.onVerified(() => submitButton.enable());
+    
+    $w('#captcha1').onVerified(() => {
+        submitButton.enable();
+    });
 
-    submitButton.onClick(async () => {
+    newDonorDataset.onAfterSave(async (newDonor) => {
+        const selectedOps = await wixData.query(COLLECTIONS.OPERATIONS)
+            .eq("checkoutSessionId", checkoutSessionId)
+            .find();
+
+        for (const operation of selectedOps.items) {
+            await wixData.insertReference(COLLECTIONS.DONORS, FIELDS.DONOR_OPS_REF, newDonor._id, operation._id);
+            await wixData.insertReference(COLLECTIONS.OPERATIONS, FIELDS.OP_DONOR_REF, operation._id, newDonor._id);
+            await wixData.save(COLLECTIONS.OPERATIONS, { ...operation, checkoutSessionId: null });
+        }
+        submitButton.label = "Success!";
+    });
+
+    newDonorDataset.onError(() => {
+        submitButton.label = "Error - Please Try Again";
+        submitButton.enable();
+    });
+
+    submitButton.onClick(() => {
         submitButton.disable();
         submitButton.label = "Processing...";
-
-        try {
-            const newDonorData = {
-                donorName: $w('#input3').value,
-                donorEmail: $w('#input1').value,
-                phone: $w('#input2').value,
-                donorId: `DON-${Date.now()}`
-            };
-
-            const newDonor = await wixData.insert(COLLECTIONS.DONORS, newDonorData);
-            
-            const selectedOps = await wixData.query(COLLECTIONS.OPERATIONS)
-                .eq("checkoutSessionId", checkoutSessionId)
-                .find();
-
-            for (const operation of selectedOps.items) {
-                await wixData.insertReference(COLLECTIONS.DONORS, FIELDS.DONOR_OPS_REF, newDonor._id, operation._id);
-                await wixData.insertReference(COLLECTIONS.OPERATIONS, FIELDS.OP_DONOR_REF, operation._id, newDonor._id);
-                await wixData.save(COLLECTIONS.OPERATIONS, { ...operation, checkoutSessionId: null });
-            }
-            
-            submitButton.label = "Success!";
-
-        } catch (err) {
-            console.error("Checkout failed:", err);
-            submitButton.label = "Error - Please Try Again";
-            submitButton.enable();
-        }
+        newDonorDataset.setFieldValues({ donorId: `DON-${Date.now()}` });
+        newDonorDataset.save();
     });
 }
