@@ -47,14 +47,15 @@ function initializeSession() {
     console.log(`User's Checkout Session ID: ${checkoutSessionId}`);
 }
 
+
 /**
- * Creates a "flat" list of families and their needs and populates the main repeater.
+ * Creates a "flat" list of families and their individual members,
+ * then populates the main repeater with this list using formatted HTML.
  */
 async function populateFamilyAndIndividualList() {
     console.log("Starting to build the request list...");
     const flatList = [];
     
-    // Step 1: Fetch all Families directly from the collection.
     const familiesResult = await wixData.query(COLLECTIONS.FAMILIES).find();
     if (familiesResult.items.length === 0) {
         console.log("No families found in the collection.");
@@ -64,17 +65,14 @@ async function populateFamilyAndIndividualList() {
     console.log(`Found ${familiesResult.items.length} families to process.`);
 
     for (const family of familiesResult.items) {
-        // Step 2: For each family, get all related data.
-        const familyRequestsQuery = wixData.query(COLLECTIONS.OPERATIONS)
+        const familyRequests = await wixData.query(COLLECTIONS.OPERATIONS)
             .hasSome(FIELDS.OP_FAMILY_REF, family._id)
             .isEmpty(FIELDS.OP_INDIVIDUAL_REF)
             .find();
         
-        const individualsQuery = wixData.query(COLLECTIONS.INDIVIDUALS)
+        const individuals = await wixData.query(COLLECTIONS.INDIVIDUALS)
             .hasSome(FIELDS.INDIVIDUAL_FAMILY_REF, family._id)
             .find();
-
-        const [familyRequests, individuals] = await Promise.all([familyRequestsQuery, individualsQuery]);
 
         let hasAnyRequests = familyRequests.items.length > 0;
         const individualItems = [];
@@ -94,7 +92,6 @@ async function populateFamilyAndIndividualList() {
             }
         }
 
-        // Step 3: Assemble the data for the repeater.
         if (hasAnyRequests) {
             flatList.push({ 
                 _id: family._id, 
@@ -119,7 +116,11 @@ async function populateFamilyAndIndividualList() {
         switch (item.type) {
             case 'family':
                 const { familyDetails, familyRequest } = item.data;
-                htmlString = `<p style="font-size:18px; font-weight:bold;">${familyDetails.headOfFamily}</p><p><strong>About:</strong> ${familyDetails.familyDescription || 'N/A'}</p>`;
+                // FIX: Updated the HTML string for better formatting.
+                htmlString = `
+                    <p style="font-size:18px;"><strong>${familyDetails.headOfFamily}'s Family</strong></p>
+                    <p><strong>About:</strong> ${familyDetails.familyDescription || 'N/A'}</p>
+                `;
                 if (familyRequest) {
                     htmlString += `<p style="margin-left: 20px;"><strong>Family Need:</strong> ${familyRequest.requestDonationDetails || 'N/A'}</p>`;
                     configureSwitchAndUrgentBox($item, familyRequest);
@@ -130,7 +131,8 @@ async function populateFamilyAndIndividualList() {
                 break;
             case 'individual':
                 const { individual, request } = item.data;
-                htmlString = `<p style="margin-left:20px;"><strong>${individual.boyOrGirl || 'Member'}, Age: ${individual.age || ''}</strong><br><strong>Needs:</strong> ${request.requestDonationDetails || 'N/A'}<br><strong>Sizes:</strong> ${request.sizeDetails || 'N/A'}</p>`;
+                // This part correctly offsets the family members.
+                htmlString = `<p style="margin-left: 20px;"><strong>${individual.boyOrGirl || 'Member'}, Age: ${individual.age || ''}</strong><br><strong>Needs:</strong> ${request.requestDonationDetails || 'N/A'}<br><strong>Sizes:</strong> ${request.sizeDetails || 'N/A'}</p>`;
                 configureSwitchAndUrgentBox($item, request);
                 break;
         }
