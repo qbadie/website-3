@@ -79,7 +79,6 @@ async function populateFamilyAndIndividualList() {
         let hasAnyRequests = familyRequests.items.length > 0;
         const individualItems = [];
 
-        // For each individual, run a separate query to find their specific request.
         for (const individual of individuals.items) {
              const individualRequestQuery = await wixData.query(COLLECTIONS.OPERATIONS)
                 .hasSome(FIELDS.OP_INDIVIDUAL_REF, individual._id)
