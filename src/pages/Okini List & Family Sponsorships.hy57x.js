@@ -172,20 +172,11 @@ async function populateSelectedRequestsRepeater() {
 
 function setupCheckoutForm() {
     const submitButton = $w('#button20');
-    const captcha = $w('#captcha1');
-
-    console.log('Setting up checkout form.');
-    submitButton.disable();
     
-    captcha.onVerified(() => {
-        console.log('Captcha verified, enabling submit button.');
-        submitButton.enable();
-    });
-
-    captcha.onError(() => {
-        console.log('Captcha error.');
-        submitButton.disable();
-    });
+    // --- CAPTCHA CODE REMOVED ---
+    // The submit button will now be enabled by default.
+    // You can also ensure it's enabled in the Wix Editor properties panel.
+    submitButton.enable();
 
     submitButton.onClick(async () => {
         submitButton.disable();
